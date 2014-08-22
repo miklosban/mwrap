@@ -58,9 +58,8 @@ if (-e $conf) {
         $User_Preferences{$var} = $value;
     }
 }
-if (exists $User_Preferences{'fs'}) {
-    $fs = $User_Preferences{'fs'};
-} elsif(exists $User_Preferences{'mplayer_params'}) {
+
+if(exists $User_Preferences{'mplayer_params'}) {
     $mplayer_params = $User_Preferences{'mplayer_params'};
 } elsif(exists $User_Preferences{'bin_path'}) {
     $bin_path =  $User_Preferences{'bin_path'};
@@ -155,13 +154,17 @@ while (<CSV>) {
         if ( ! -e $fn ) {
             print "grab the $seek position\n";
             `$mplayer '$video_file' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null`;
-            move("00000001.jpg","$fn");
-            $image = Image::Magick->new;
-            $x = $image->Read("$fn");
-            $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'#000C',strokewidth=>1,text=>"$event");
-            $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'none',fill=>'white',text=>"$event");
-            $x = $image->Write("$fn");
-            warn "$x" if "$x";
+            if ( -e "00000001.jpg" ) {
+                move("00000001.jpg","$fn");
+                $image = Image::Magick->new;
+                $x = $image->Read("$fn");
+                $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'#000C',strokewidth=>1,text=>"$event");
+                $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'none',fill=>'white',text=>"$event");
+                $x = $image->Write("$fn");
+                warn "$x" if "$x";
+            } else {
+                print "The video file is not seekable! No picture output.\nIf you want to check it, use this command:\nmplayer '$video_file' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null\n";
+            }
         }
         #`convert $fn -gravity south -pointsize 14 -stroke '#000C' -strokewidth 1 -annotate +0+10 '$event' -stroke none -fill white -annotate +0+10 '$event' $fn`;
         
