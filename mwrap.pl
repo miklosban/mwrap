@@ -74,15 +74,17 @@ my $conf = $ENV{"HOME"} . '/.mwrap.conf';
 my %User_Preferences = ();
 # ---------------------------------------------------------------------------------------
 
-open(CONFIG, $conf) or warn("Unable to open: $conf");
-while (<CONFIG>) {
-    chomp;                  # no newline
-    s/#.*//;                # no comments
-    s/^\s+//;               # no leading white
-    s/\s+$//;               # no trailing white
-    next unless length;     # anything left?
-    my ($var, $value) = split(/\s*=\s*/, $_, 2);
-    $User_Preferences{$var} = $value;
+if (-e $conf) {
+    open(CONFIG, $conf) or warn("Unable to open: $conf");
+    while (<CONFIG>) {
+        chomp;                  # no newline
+        s/#.*//;                # no comments
+        s/^\s+//;               # no leading white
+        s/\s+$//;               # no trailing white
+        next unless length;     # anything left?
+        my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        $User_Preferences{$var} = $value;
+    }
 }
 if (exists $User_Preferences{'fs'}) {
     $fs = $User_Preferences{'fs'};

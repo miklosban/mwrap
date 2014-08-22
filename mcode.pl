@@ -37,25 +37,26 @@ use warnings;
 
 
 use File::Basename;
-my $name = $0;
 use File::Copy;
 use Image::Magick;
 my($image, $x);
 my $mplayer_path = 'mplayer';
-my ($answer,$pos,$seek,$event,$id);
 my $conf = $ENV{"HOME"} . '/.mwrap.conf';
 my %User_Preferences = ();
 my $mplayer_params = '-vf scale=960:540';
 my $bin_path = '/usr/local/bin/';
-open(CONFIG, $conf) or warn("Unable to open: $conf");
-while (<CONFIG>) {
-    chomp;                  # no newline
-    s/#.*//;                # no comments
-    s/^\s+//;               # no leading white
-    s/\s+$//;               # no trailing white
-    next unless length;     # anything left?
-    my ($var, $value) = split(/\s*=\s*/, $_, 2);
-    $User_Preferences{$var} = $value;
+
+if (-e $conf) {
+    open(CONFIG, $conf) or warn("Unable to open: $conf");
+    while (<CONFIG>) {
+        chomp;                  # no newline
+        s/#.*//;                # no comments
+        s/^\s+//;               # no leading white
+        s/\s+$//;               # no trailing white
+        next unless length;     # anything left?
+        my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        $User_Preferences{$var} = $value;
+    }
 }
 if (exists $User_Preferences{'fs'}) {
     $fs = $User_Preferences{'fs'};
@@ -72,7 +73,7 @@ my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause);
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause,$event,$id);
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
 my $events_csv = "$rand_name.csv";
