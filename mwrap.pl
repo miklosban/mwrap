@@ -50,7 +50,7 @@
 #
 #
 # DEVELOPMENT INFO
-#       last modication: 2014.jul.17
+#       last modication: Mon Dec 29 16:17:30 CET 2014
 #
 #
 
@@ -101,7 +101,7 @@ my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause);
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause,$player);
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
 my $events_csv = "$rand_name.csv";
@@ -185,7 +185,7 @@ if (-e $filename) {
             close (KEYF);
         }
         print CSV "#Field separator: $fs\n";
-        printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%2$s',"$fs","\n";
+        printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
     } else {
         print "$project_dir exists.\nDo you want to continue from the last event? (y,n)\n";
         $answer = <STDIN>;
@@ -210,7 +210,7 @@ if (-e $filename) {
                 }
                 close (KEYF);
             }
-            printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%2$s',"$fs","\n";
+            printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
         } else {
             use File::Find;
             my $dir = "$project_dir";
@@ -350,10 +350,11 @@ if ($pid) {
                 }
                 $time = $1;
                 if (exists  $hash{ $char }) {
-                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n";
-                    printf "%4.d %-15s%s %.2f%s0\n",$c,$hash{$char},$char,$time,$fs;
+                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n",$player;
+                    printf '%4.d [%6$s] %-15s%s %.2f%s0%7$s',$c,$hash{$char},$char,$time,$fs,$player,"\n";
                     #} elsif (exists $hash{ $rehexchar }) {
                 } elsif (hex($hexchar)>64 and hex($hexchar)<91) {
+                    # letters A-Z
                     # flush csv here
                     CSV->autoflush;
                     # UPPERCASE LETTERS
@@ -372,15 +373,20 @@ if ($pid) {
                         }
                     }
                     if (exists $hash{ $rehexchar }) {
-                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%7$s',$c,"$hash{$rehexchar}-end",$rehexchar,$time,$duration,$fs,"\n";
-                        printf "%4.d %-15s%s %.2f %.2f\n",$c,"$hash{$rehexchar}-end",$rehexchar,$time,$duration;
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$hash{$rehexchar}-end",$rehexchar,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s",$c,"$hash{$rehexchar}-end',$rehexchar,$time,$duration,$player,"\n";
                     } else {
-                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$fs,"\n";
-                        printf "%4.d %-15s%s %.2f %.2f\n",$c,"$rehexchar-end",$rehexchar,$time,$duration;
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$player,"\n";
                     }
+                } elsif (hex($hexchar)>48 and hex($hexchar)<58) {
+                    $player = $char;
+                    $c = $c-1;
+                    # numbers 1-9
+                    printf "object id: $player\n";
                 } else {
-                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%7$s',$c,'undefined',$char,$time,0,$fs,"\n";
-                    printf "%4.d %-15s%s %.2f%s0\n",$c,'undefined',$char,$time,$fs;
+                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,0,$fs,"\n",$player;
+                    printf '%4.d [%6$s] %-15s%s %.2f%s0%7$s',$c,'undefined',$char,$time,$fs,$player,"\n";
                 }
                 $c = $c+1;
                 last;
