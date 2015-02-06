@@ -11,7 +11,7 @@
 #       each ascii key-press event will logged with their time position into
 #       the video_file.events.csv
 # 
-#       You can interrupt the recording with the 'esc' key, so do not use it for any events.
+#       You can interrupt the recording with the 'end' key, so do not use it for any events.
 #       If the video_file.events.csv already exists, you can continue the event recording 
 #       from the last recorded time position.
 #       You can specify the key events like in this example:
@@ -28,8 +28,10 @@
 #       s sleeping
 #       S sleeping-end
 # 
-#       You can use all the mplayer control keys in the mplayer window and record the key 
-#       press events in the parent window.
+#       You can use all the mplayer control keys in the mplayer window.
+#       You can record the key press events in the parent window.
+#
+#       Use Fn1-12 to mark the observed object with number 1-12.
 #  
 # DEVELOPMENT
 # 
@@ -50,7 +52,7 @@
 #
 #
 # DEVELOPMENT INFO
-#       last modication: Mon Dec 29 16:17:30 CET 2014
+#       last modication: Fri Feb  6 11:00:02 CET 2015
 #
 #
 
@@ -60,7 +62,6 @@ use Term::ReadKey;
 use File::Basename;
 use IO::Handle;
 
-
 # 
 # Set these variables as you need
 # ---------------------------------------------------------------------------------------
@@ -69,8 +70,17 @@ my $mplayer_params = '-vf scale=960:540 -cache 8192 -forceidx -mc 0 -nobps -ni -
 my $fs = ';';   # csv field separator
 my $mplayer_path = 'mplayer';
 my $bin_path = '/usr/local/bin/';
+my $conf = '';
+my $ctr_enabled = 1; # pause control by space key enabled
+my $short_seek = 10;
+my $long_seek = 120;
 # ---------------------------------------------------------------------------------------
-my $conf = $ENV{"HOME"} . '/.mwrap.conf';
+if (-e "./mwrap.conf") {
+    $conf = "./mwrap.conf";
+} else {
+    `echo "$mplayer_params" > mwrap.conf`;
+    $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
+}
 my %User_Preferences = ();
 # ---------------------------------------------------------------------------------------
 
@@ -83,17 +93,30 @@ if (-e $conf) {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        print "$var $value\n";
         $User_Preferences{$var} = $value;
     }
 }
 if (exists $User_Preferences{'fs'}) {
     $fs = $User_Preferences{'fs'};
-} elsif(exists $User_Preferences{'mplayer_params'}) {
+}
+if(exists $User_Preferences{'mplayer_params'}) {
     $mplayer_params = $User_Preferences{'mplayer_params'};
-} elsif(exists $User_Preferences{'bin_path'}) {
+}
+if(exists $User_Preferences{'bin_path'}) {
     $bin_path =  $User_Preferences{'bin_path'};
-} elsif(exists $User_Preferences{'mplayer_path'}) {
+}
+if(exists $User_Preferences{'mplayer_path'}) {
     $mplayer_path =  $User_Preferences{'mplayer_path'};
+}
+if(exists $User_Preferences{'short_seek'}) {
+    $short_seek =  $User_Preferences{'short_seek'};
+}
+if(exists $User_Preferences{'long_seek'}) {
+    $long_seek =  $User_Preferences{'long_seek'};
+}
+if(exists $User_Preferences{'space_pause'}) {
+    $ctr_enabled =  $User_Preferences{'space_pause'};
 }
 
 # Do not change these variables
@@ -101,7 +124,8 @@ my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause,$player);
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause);
+my $player = '';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
 my $events_csv = "$rand_name.csv";
@@ -163,7 +187,7 @@ if (-e $keydef) {
     print "\n";
     close (KEYF);
 } else {
-    print "You can specify the key events in the 'keys.txt' like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
+    print "You can specify key events in the 'keys.txt', like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
     # röptében kulcs definiálás!!!
 }
 if (-e $filename) {
@@ -256,7 +280,7 @@ if (-e $filename) {
     exit 1;
 }
 
-print "\nYou can control the mplayer with the usual keys.\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
+print "\nYou can control mplayer with the usual control keys (change to the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
 
 # last line from the csv;
 if (defined $ll) {
@@ -278,7 +302,7 @@ if ($pid) {
     #if ($line ne '') {
     #    print "$line\n";
     #}
-    print "Press 'esc' to escape\n";
+    print "Press 'end' to finish!\n";
 
 
     if (defined($pos)) {
@@ -294,17 +318,120 @@ if ($pid) {
 
     my $interval = 0; 
     my $pause = 0;
+    my $controlkey=0;
     ReadMode 3;
     while (defined($char = ReadKey(0))) {
         $hexchar = unpack "H*",$char;
-        if ($hexchar eq '1b') {
-            # ESC signal
-            open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
-            print FIFO "stop\n";
-            close FIFO;
-            printf "[escape], event recording stopped.\n";
-            last;
-        } elsif ($hexchar eq '7f') {
+        
+        #printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
+        if ($hexchar eq '7e') {
+            # long control keys END
+            $controlkey=0;
+            next;
+        } elsif ($hexchar eq '1b') {
+            # long control keys 2. character
+            $controlkey=1;
+            next;
+        } elsif ($hexchar eq '5b' or $hexchar eq '4f') {
+            # long control keys 2. character
+            $controlkey=2;
+            next;
+        }
+
+        if ($controlkey == 2 and ($hexchar eq '31' or $hexchar eq '32')) {
+            # FN keys 5-12
+            $controlkey = 3;
+            next;
+        }
+        #control key 3. code
+        if ($controlkey==3) {
+            if (hex($hexchar)==48 or hex($hexchar)==49 or hex($hexchar)==51 or hex($hexchar)==52 or hex($hexchar)==53 or hex($hexchar)==55 or hex($hexchar)==56 or hex($hexchar)==57) {
+                #FN 5-8, 9-12 
+                
+                if (hex($hexchar) == 53) { $player = 5 }
+                elsif (hex($hexchar) == 55)	{ $player = 6 }
+                elsif (hex($hexchar) == 56)	{ $player = 7 }
+                elsif (hex($hexchar) == 57)	{ $player = 8 }
+                elsif (hex($hexchar) == 48)	{ $player = 9 }
+                elsif (hex($hexchar) == 49)	{ $player = 10 }
+                elsif (hex($hexchar) == 51)	{ $player = 11 }
+                elsif (hex($hexchar) == 52)	{ $player = 12 }
+                else { $player = '' }
+                printf "object id: $player\n";
+                $controlkey=0;
+                next;
+            } 
+        }
+        #control key 2. code
+        if ($controlkey==2) {
+            if ($hexchar eq '41') {
+                printf "Seek forward $long_seek.\n";
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "seek $long_seek\n";
+                close FIFO;
+                $controlkey=0;
+                next;
+            }
+            elsif ($hexchar eq '42') {
+                printf "Seek backward $long_seek sec.\n";
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "seek -$long_seek\n";
+                close FIFO;
+                $controlkey=0;
+                next;
+            }
+            elsif ($hexchar eq '43') {
+                printf "Seek forward $short_seek sec.\n";
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "seek $short_seek\n";
+                close FIFO;
+                $controlkey=0;
+                next;
+            }
+            elsif ($hexchar eq '44') {
+                printf "Seek backward $short_seek sec.\n";
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "seek -$short_seek\n";
+                close FIFO;
+                $controlkey=0;
+                next;
+            }
+            elsif ($hexchar eq '35') {
+                #page up 
+                printf "PageUp pressed. No function assigned.\n";
+                $controlkey=0;
+                next;
+            }
+            elsif ($hexchar eq '36') {
+                #page down 
+                printf "PageDown pressed. No function assigned.\n";
+                $controlkey=0;
+                next;
+            }
+            elsif (hex($hexchar)>=80 and hex($hexchar)<=83) {
+                #FN 1-4 
+                $player = hex($hexchar)-79;
+                printf "object id: $player\n";
+                $controlkey=0;
+                next;
+
+            } elsif ($hexchar eq '46') {
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "stop\n";
+                close FIFO;
+                printf "[end], event recording stopped.\n";
+                last;
+            }
+            else {
+                #unhandled control key
+                printf "Unhandled control key:\n";
+                printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
+                $controlkey=0;
+                next;
+            }
+        }
+        
+        if ($hexchar eq '7f') {
             # backspace
             open(CSVa, '<', "$events_csv") or die $!;
             @ll = <CSVa>;
@@ -324,14 +451,15 @@ if ($pid) {
             print FIFO "osd_show_text 'Last event deleted'\n";
             print FIFO "get_time_pos\n";
             close FIFO;
-        #} elsif ($hexchar eq '20') {
-        #  open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
-        #    print FIFO "pause\n";
-        #    #print FIFO "key_down_event\n";
-        #    close FIFO;
-        #    if ($pause) { $pause = 0; }
-        #    else { $pause = 1; }
-        } else {
+        } elsif ($hexchar eq '20' and $ctr_enabled==1) {
+            # space to pause if control enabled
+            open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+            print FIFO "pause\n";
+            printf "pause\n";
+            close FIFO;
+            next;
+        } 
+        else {
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "get_time_pos\n";
             print FIFO "key_down_event\n";
@@ -374,16 +502,16 @@ if ($pid) {
                     }
                     if (exists $hash{ $rehexchar }) {
                         printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$hash{$rehexchar}-end",$rehexchar,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s",$c,"$hash{$rehexchar}-end',$rehexchar,$time,$duration,$player,"\n";
+                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s',$c,'$hash{$rehexchar}-end',$rehexchar,$time,$duration,$player,"\n";
                     } else {
                         printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$fs,"\n",$player;
                         printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$player,"\n";
                     }
-                } elsif (hex($hexchar)>48 and hex($hexchar)<58) {
-                    $player = $char;
-                    $c = $c-1;
-                    # numbers 1-9
-                    printf "object id: $player\n";
+                #} elsif (hex($hexchar)>48 and hex($hexchar)<58) {
+                #  $player = $char;
+                #    $c = $c-1;
+                #    # numbers 1-9
+                #    printf "object id: $player\n";
                 } else {
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,0,$fs,"\n",$player;
                     printf '%4.d [%6$s] %-15s%s %.2f%s0%7$s',$c,'undefined',$char,$time,$fs,$player,"\n";
