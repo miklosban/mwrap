@@ -61,12 +61,13 @@ use warnings;
 use Term::ReadKey;
 use File::Basename;
 use IO::Handle;
+use POSIX qw{strftime};
 
 # 
 # Set these variables as you need
 # ---------------------------------------------------------------------------------------
 # default parameters; Define it in user level in the ~/.mwrap.conf file
-my $mplayer_params = '-vf scale=960:540 -cache 8192 -forceidx -mc 0 -nobps -ni -ao null';
+my $mplayer_params = '-vf scale=960:540 -ao null';
 my $fs = ';';   # csv field separator
 my $mplayer_path = 'mplayer';
 my $bin_path = '/usr/local/bin/';
@@ -77,9 +78,15 @@ my $long_seek = 120;
 # ---------------------------------------------------------------------------------------
 if (-e "./mwrap.conf") {
     $conf = "./mwrap.conf";
+    printf "Local parameter settings read:\n";
 } else {
-    `echo "$mplayer_params" > mwrap.conf`;
-    $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
+    if (-e $ENV{'HOME'} . '/.mwrap.conf') {
+        $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
+        printf "Parameter settings read from home directory:\n";
+    } else {
+        `echo "mplayer_params = $mplayer_params\nfs = ;\n" > mwrap.conf`;
+        printf "There was no mwrap.conf defined. It has been created here with default values. You can edit it as you need.\n";
+    }
 }
 my %User_Preferences = ();
 # ---------------------------------------------------------------------------------------
@@ -93,7 +100,7 @@ if (-e $conf) {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
-        print "$var $value\n";
+        printf "\t$var $value\n";
         $User_Preferences{$var} = $value;
     }
 }
@@ -124,7 +131,7 @@ my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $duration,@f,$hexchar,$rehexchar,$pause);
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$pause,$rehexcharT,$utf8);
 my $player = '';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
@@ -179,7 +186,8 @@ if (-e $keydef) {
     open(KEYF, '<', $keydef);
     print "Currently defined keys:\n";
     while(<KEYF>) {
-        print;
+        printf "\t";
+        printf;
         ($key,$value) = split / /;
         chop $value;
         $hash{ $key } = $value;
@@ -244,7 +252,7 @@ if (-e $filename) {
             chop(@f);
             foreach (@f){
                 $i++;
-                print "$i $_\n";
+                printf "\t$i $_\n";
             }
             $answer = <STDIN>;
             chop $answer;
@@ -280,7 +288,7 @@ if (-e $filename) {
     exit 1;
 }
 
-print "\nYou can control mplayer with the usual control keys (change to the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
+print "\nYou can control mplayer with the usual control keys (in the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
 
 # last line from the csv;
 if (defined $ll) {
@@ -311,7 +319,7 @@ if ($pid) {
         $c = 1;
     }
     open(FIFO,"> $FIFO") || die "Cannot open $! \n";
-    #print FIFO "key_down_event 111\n";
+    print FIFO "key_down_event 111\n";
     print FIFO "osd_show_text '$answer'\n";
     print FIFO "pause\n";
     close FIFO;
@@ -335,6 +343,12 @@ if ($pid) {
         } elsif ($hexchar eq '5b' or $hexchar eq '4f') {
             # long control keys 2. character
             $controlkey=2;
+            next;
+        } elsif ($hexchar eq 'c3' or $hexchar eq 'c5') {
+            #utf8 characters: öüóőúéáűí...
+            if ($hexchar eq 'c3') { $utf8 = 'c3' }
+            elsif ($hexchar eq 'c5') { $utf8 = 'c5' }
+            $controlkey=4;
             next;
         }
 
@@ -419,7 +433,7 @@ if ($pid) {
                 open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
                 print FIFO "stop\n";
                 close FIFO;
-                printf "[end], event recording stopped.\n";
+                printf "\"end\" Event recording stopped.\n";
                 last;
             }
             else {
@@ -429,6 +443,10 @@ if ($pid) {
                 $controlkey=0;
                 next;
             }
+        } elsif ($controlkey==4) {
+            $char=pack "H*",$utf8.$hexchar;
+            $controlkey=0;
+            $utf8='';
         }
         
         if ($hexchar eq '7f') {
@@ -462,26 +480,27 @@ if ($pid) {
         else {
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "get_time_pos\n";
-            print FIFO "key_down_event\n";
             if ($pause) {
                 print FIFO "pause\n";
-                print FIFO "key_down_event\n";
                 $pause = 0;
             } 
             close FIFO;
         }
         $rehexchar = chr(hex($hexchar)+hex(20));
+        $rehexcharT = chr(hex($hexchar));
         while (<KID_TO_READ>) {
             if (/^ANS_TIME_POSITION=(.+)/) {
                 if ($hexchar eq '7f') {
                     last;
                 }
                 $time = $1;
+                $ftime = strftime("\%H:\%M:\%S", gmtime($time));
                 if (exists  $hash{ $char }) {
+                    #kis betűs leütés aminek van cimkéje
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%6$s] %-15s%s %.2f%s0%7$s',$c,$hash{$char},$char,$time,$fs,$player,"\n";
+                    printf '%4.d [%6$s] %-15s%s %s%s0%7$s',$c,$hash{$char},$char,$ftime,$fs,$player,"\n";
                     #} elsif (exists $hash{ $rehexchar }) {
-                } elsif (hex($hexchar)>64 and hex($hexchar)<91) {
+                } elsif ((hex($hexchar)>64 and hex($hexchar)<91) or length($hexchar)==4) {
                     # letters A-Z
                     # flush csv here
                     CSV->autoflush;
@@ -501,11 +520,13 @@ if ($pid) {
                         }
                     }
                     if (exists $hash{ $rehexchar }) {
-                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$hash{$rehexchar}-end",$rehexchar,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s',$c,'$hash{$rehexchar}-end',$rehexchar,$time,$duration,$player,"\n";
+                        #nagy betűs leütés aminek van cimkéje
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%6$s] %-15s%s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n";
                     } else {
-                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%6$s] %-15s%s %.2f %.2f%7$s',$c,"$rehexchar-end",$rehexchar,$time,$duration,$player,"\n";
+                        #nagy betűs leütés aminek nincs cimkéje
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$rehexchar."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%6$s] %-15s%s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n";
                     }
                 #} elsif (hex($hexchar)>48 and hex($hexchar)<58) {
                 #  $player = $char;
@@ -513,8 +534,9 @@ if ($pid) {
                 #    # numbers 1-9
                 #    printf "object id: $player\n";
                 } else {
+                    #kis betűs leütés aminek nincs cimkéje
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%6$s] %-15s%s %.2f%s0%7$s',$c,'undefined',$char,$time,$fs,$player,"\n";
+                    printf '%4.d [%6$s] %-15s%s %s%s0%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n";
                 }
                 $c = $c+1;
                 last;
@@ -559,7 +581,7 @@ close(CSV) || warn "csv write error: $?";
 
 #exit 0;
 # csv processing
-print "csv processing";
+print "calling mcode.pl:\n";
 `$mcode_pl '$filename' '$events_csv' 1>&2`;
 
 #`mplayer $ARGV[0] -ss $time -frames 1 -vo jpeg -ao null 2>/dev/null;mv 00000001.jpg $time.jpg`;

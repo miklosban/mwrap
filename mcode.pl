@@ -41,10 +41,23 @@ use File::Copy;
 use Image::Magick;
 my($image, $x);
 my $mplayer_path = 'mplayer';
-my $conf = $ENV{"HOME"} . '/.mwrap.conf';
+my $conf = '';
 my %User_Preferences = ();
 my $mplayer_params = '-vf scale=960:540';
 my $bin_path = '/usr/local/bin/';
+
+if (-e "./mwrap.conf") {
+    $conf = "./mwrap.conf";
+    #printf "Local parameter settings read.\n";
+} else {
+    if (-e $ENV{'HOME'} . '/.mwrap.conf') {
+        $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
+        #printf "Parameter settings read from home directory.\n";
+    } else {
+        `echo "mplayer_params = $mplayer_params\nfs = ;\n" > mwrap.conf`;
+        #printf "There was no mwrap.conf defined. It has been created here with default values. You can edit it as you need.\n";
+    }
+}
 
 if (-e $conf) {
     open(CONFIG, $conf) or warn("Unable to open: $conf");
@@ -98,7 +111,7 @@ if (@ARGV == 0) {
     my $pager = $ENV{PAGER} || 'less';
 }
 
-printf STDOUT "mwrap images processing...\n";
+printf STDOUT "mcode image processing...\n";
 
 if (@ARGV < 2) {
     print "A video file and the event csv file path nedeed!\n";

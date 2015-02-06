@@ -1,7 +1,6 @@
-mwrap - key event wrapper for mplayer
+mwrap - key event wrapper with mplayer
 http://zoology.unideb.hu/mwrap
-by Miklos Ban at 2011-2013
-last modification at 2014 agust 22
+by Miklos Ban <banm@vocs.unideb.hu>
 
 
 Installation:
@@ -18,6 +17,6 @@ see the source code for further information
 
 
 
-Copyright:
+Copyright: GPL v3
 
-see the source code for further information
+See the source code for further information.
