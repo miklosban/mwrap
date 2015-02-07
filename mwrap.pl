@@ -51,8 +51,8 @@
 #       I don't know yet. Write an email if you have any question.
 # 
 # 
-# DEVELOPMENT INFO
-#       last modication: Fri Feb  6 11:00:02 CET 2015
+# VERSION INFO
+#       last modification: Sat Feb  7 20:53:54 CET 2015
 # 
 # 
 
@@ -62,6 +62,18 @@ use Term::ReadKey;
 use File::Basename;
 use IO::Handle;
 use POSIX qw{strftime};
+use Getopt::Long;
+#for bidirectional communication; we don't need it actually
+#use Socket;
+#use IO::Socket;
+#use IO::Select;
+#socketpair(CHILD, PARENT, AF_UNIX, SOCK_STREAM, PF_UNSPEC)
+#    or die "socketpair: $!";
+#CHILD->autoflush(1);
+#PARENT->autoflush(1);
+#my $s = IO::Select->new();
+#$s->add(\*CHILD);
+#
 
 # 
 # Set these variables as you need
@@ -76,6 +88,72 @@ my $ctr_enabled = 1; # pause control by space key enabled
 my $short_seek = 10;
 my $long_seek = 120;
 # ---------------------------------------------------------------------------------------
+# Do not change these variables
+my $mplayer = $mplayer_path.' '.$mplayer_params;
+my $args = ''; # mplayer args like -vo x11
+my $FIFO = 'fifo';
+my $name = $0;
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $project_dir, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$pause,$rehexcharT,$utf8,$switch);
+my $player = '';
+my $filename = '';
+my $keydef = 'keys.txt';
+my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
+my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
+my $events_csv = "$rand_name.csv";
+my $mcode_pl = $bin_path.'mcode.pl';
+my $version='';
+# ---------------------------------------------------------------------------------------
+# Command line options
+GetOptions ('k:s' => \$keydef, 'v' => \$version,'<>' => \&args);
+sub args {
+    my ($p1) = @_;
+    if ($filename eq '') {
+        $filename = $p1;
+        $project_dir = "$filename.dir";
+    } else { $keydef = $p1; }
+}
+# ---------------------------------------------------------------------------------------
+# Version information
+if ($version) {
+    open(FILE, $name) or die("Unable to open myself:$name");
+    my $text = '';
+    while (<FILE>) {
+        if ($_ =~ /^#\s+last modification:/) {
+            $text .= "Last modification: ".$';
+            last;
+        } 
+    }
+    close(FILE);
+    print $text;
+    exit 1;
+}
+# ---------------------------------------------------------------------------------------
+# Help text
+if ($filename eq '') {
+    print "A video file name nedeed!\n";
+
+    open(FILE, $name) or die("Unable to open myself:$name");
+    my $pager = $ENV{PAGER} || 'less';
+    open(my $less, '|-', $pager, '-e') || die "Cannot pipe to $pager: $!";
+    my $text = '';
+    while (<FILE>) {
+        if ($_ =~ /^#!/) {
+            next;
+        }
+        elsif ($_ =~ /^#/) {
+            $text .= $';
+        } else {
+            last;
+        }
+    }
+    close(FILE);
+
+    print $less $text;
+    close($less);
+    exit 1;
+} 
+# ---------------------------------------------------------------------------------------
+# Set mwrap parameters
 if (-e "./mwrap.conf") {
     $conf = "./mwrap.conf";
     printf "Local parameter settings read:\n";
@@ -89,8 +167,6 @@ if (-e "./mwrap.conf") {
     }
 }
 my %User_Preferences = ();
-# ---------------------------------------------------------------------------------------
-
 if (-e $conf) {
     open(CONFIG, $conf) or warn("Unable to open: $conf");
     while (<CONFIG>) {
@@ -125,63 +201,8 @@ if(exists $User_Preferences{'long_seek'}) {
 if(exists $User_Preferences{'space_pause'}) {
     $ctr_enabled =  $User_Preferences{'space_pause'};
 }
-
-# Do not change these variables
-my $mplayer = $mplayer_path.' '.$mplayer_params;
-my $args = ''; # mplayer args like -vo x11
-my $FIFO = 'fifo';
-my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $keydef, $project_dir ,$filename, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$pause,$rehexcharT,$utf8);
-my $player = '';
-my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
-my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
-my $events_csv = "$rand_name.csv";
-my $mcode_pl = $bin_path.'mcode.pl';
-
-#for bidirectional communication; we don't need it actually
-#use Socket;
-#use IO::Socket;
-#use IO::Select;
-#socketpair(CHILD, PARENT, AF_UNIX, SOCK_STREAM, PF_UNSPEC)
-#    or die "socketpair: $!";
-#CHILD->autoflush(1);
-#PARENT->autoflush(1);
-#my $s = IO::Select->new();
-#$s->add(\*CHILD);
-#
-
-if (@ARGV == 0) {
-    print "A video file name nedeed!\n";
-
-    open(FILE, $name) or die("Unable to open myself:$name");
-    my $pager = $ENV{PAGER} || 'less';
-    open(my $less, '|-', $pager, '-e') || die "Cannot pipe to $pager: $!";
-    my $text = '';
-    while (<FILE>) {
-        if ($_ =~ /^#!/) {
-            next;
-        }
-        elsif ($_ =~ /^# /) {
-            $text .= $';
-        } else {
-            last;
-        }
-    }
-    close(FILE);
-
-    print $less $text;
-    close($less);
-    exit 1;
-} else {
-    $filename = shift(@ARGV);
-    $project_dir = "$filename.dir";
-} 
-if (@ARGV == 1) {
-    $keydef = shift(@ARGV);
-    if (! -e $keydef) { print "$keydef file does not exists!\n"; }
-} else {
-    $keydef = 'keys.txt';
-}
+# ---------------------------------------------------------------------------------------
+# keys
 if (-e $keydef) {
     open(KEYF, '<', $keydef);
     print "Currently defined keys:\n";
@@ -195,9 +216,11 @@ if (-e $keydef) {
     print "\n";
     close (KEYF);
 } else {
-    print "You can specify key events in the 'keys.txt', like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
+    print "No keys defined!\nYou can specify key events in the 'keys.txt', like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
     # röptében kulcs definiálás!!!
 }
+# ---------------------------------------------------------------------------------------
+# processing
 if (-e $filename) {
     if ( ! -d $project_dir ) {
         mkdir "$project_dir" or die $!;
@@ -284,7 +307,7 @@ if (-e $filename) {
         }
     }
 } else {
-    print "$filename does not exists.\n";
+    print "Videofile: '$filename' does not exists.\n";
     exit 1;
 }
 
@@ -295,6 +318,7 @@ if (defined $ll) {
     printf "%4.d %-15s%s %.2f\n",split /$fs/,$ll;
 }
 
+# create fifo
 unless (-p $FIFO) {
     unlink $FIFO;
     require POSIX;
