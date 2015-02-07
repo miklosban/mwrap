@@ -22,7 +22,7 @@
 # 
 #       The default place of the predefined keys is in the keys.txt, but you can specify any 
 #       file name in the second argument.
-#
+# 
 #       If you append press SHIFT+key character you can measure duration from 
 #       last key event, e.g:
 #       s sleeping
@@ -30,7 +30,7 @@
 # 
 #       You can use all the mplayer control keys in the mplayer window.
 #       You can record the key press events in the parent window.
-#
+# 
 #       Use Fn1-12 to mark the observed object with number 1-12.
 #  
 # DEVELOPMENT
@@ -49,12 +49,12 @@
 # COPYRIGHT
 # 
 #       I don't know yet. Write an email if you have any question.
-#
-#
+# 
+# 
 # DEVELOPMENT INFO
 #       last modication: Fri Feb  6 11:00:02 CET 2015
-#
-#
+# 
+# 
 
 use strict;
 use warnings;
