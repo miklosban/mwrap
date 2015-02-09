@@ -1,13 +1,12 @@
 #!/usr/bin/perl 
 #  
 # NAME 
-#       mwrap - key event wrapper for mplayer
+#       mwrap - key event wrapper with mplayer
 # 
 # SYNOPSIS
 #       mwrap.pl video_file [keys file]
 # 
 # DESCRIPTION
-# 
 #       each ascii key-press event will logged with their time position into
 #       the video_file.events.csv
 # 
@@ -31,28 +30,31 @@
 #       You can use all the mplayer control keys in the mplayer window.
 #       You can record the key press events in the parent window.
 # 
-#       Use Fn1-12 to mark the observed object with number 1-12.
+#       Fn1-12 set the observed object id with number 1-12.
+#       this ids will append to next event row.
+#
+#       PageDown seek back to start point of the current object;
+#       PageUp and FN1-12 seek back to the start point of the LAST given object id;
 #  
 # DEVELOPMENT
-# 
+#       Join to development on GitHub.
 #       
 # 
 # KNOWN BUGS
-# 
 #       The mplayer pauses sometimes after a key press. Its happening before 
 #       the KID_TO_READ cicle
+#       The mplayer seems to have problem playing video if the fps lass then 10. It can play
+#       however the interface behave as a heavy load system.
 # 
 # AUTHOR
-#  
 #       Written by Bán Miklós (banm@vocs.unideb.hu) at 2011.04.25.
 # 
 # COPYRIGHT
-# 
 #       I don't know yet. Write an email if you have any question.
 # 
 # 
 # VERSION INFO
-#       last modification: Sat Feb  7 20:53:54 CET 2015
+#       last modification: Mon Feb  9 14:41:26 CET 2015
 # 
 # 
 
@@ -93,7 +95,7 @@ my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $project_dir, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$pause,$rehexcharT,$utf8,$switch);
+my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $project_dir, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
 my $player = '';
 my $filename = '';
 my $keydef = 'keys.txt';
@@ -102,6 +104,8 @@ my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
 my $events_csv = "$rand_name.csv";
 my $mcode_pl = $bin_path.'mcode.pl';
 my $version='';
+my $seek_to_object = 0;
+my $mark_at = '';
 # ---------------------------------------------------------------------------------------
 # Command line options
 GetOptions ('k:s' => \$keydef, 'v' => \$version,'<>' => \&args);
@@ -220,7 +224,7 @@ if (-e $keydef) {
     # röptében kulcs definiálás!!!
 }
 # ---------------------------------------------------------------------------------------
-# processing
+# mwrap starting
 if (-e $filename) {
     if ( ! -d $project_dir ) {
         mkdir "$project_dir" or die $!;
@@ -285,24 +289,30 @@ if (-e $filename) {
             $answer = $f[$answer-1];
             $answer =~ s/\.csv$//; 
             $events_csv = "$project_dir/$answer.csv";
-            #$ll = `tail -n 1 $events_csv`;
             open(CSV, '<', "$events_csv") or die $!;
             @ll = <CSV>;
-            $ll = pop @ll;
-            print $ll;
             close(CSV);
+            while(@ll) {
+                $ll = pop @ll;
+                if ($ll =~ /^#/) { next; }
+                else { 
+                    print $ll;
+                    last;
+                }
+            }
             open(CSV, '>>', "$events_csv") or die $!;
             CSV->autoflush(1);
-            @bl = split /;/,$ll;
+            @bl = split /$fs/,$ll;
             $seek = $bl[3];
             $pos = $bl[0];
-            if ($pos =~ /^\d+?$/) {
-                chop $seek;
+            $player = $bl[5];
+            chomp $player;
+            if ($pos =~ /^\d+$/) {
                 print "Seeking to $seek\" position\n";
             } else {
-                undef $seek;
-                undef $ll;
-                undef $pos;
+                $seek = 0;
+                $ll = '';
+                $pos = '';
             }
         }
     }
@@ -314,7 +324,7 @@ if (-e $filename) {
 print "\nYou can control mplayer with the usual control keys (in the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
 
 # last line from the csv;
-if (defined $ll) {
+if ($ll =~ /\d+.+/) {
     printf "%4.d %-15s%s %.2f\n",split /$fs/,$ll;
 }
 
@@ -336,8 +346,7 @@ if ($pid) {
     #}
     print "Press 'end' to finish!\n";
 
-
-    if (defined($pos)) {
+    if ($pos =~ /\d+/) {
         $c = $pos+1;
     } else {
         $c = 1;
@@ -349,7 +358,6 @@ if ($pid) {
     close FIFO;
 
     my $interval = 0; 
-    my $pause = 0;
     my $controlkey=0;
     ReadMode 3;
     while (defined($char = ReadKey(0))) {
@@ -385,7 +393,6 @@ if ($pid) {
         if ($controlkey==3) {
             if (hex($hexchar)==48 or hex($hexchar)==49 or hex($hexchar)==51 or hex($hexchar)==52 or hex($hexchar)==53 or hex($hexchar)==55 or hex($hexchar)==56 or hex($hexchar)==57) {
                 #FN 5-8, 9-12 
-                
                 if (hex($hexchar) == 53) { $player = 5 }
                 elsif (hex($hexchar) == 55)	{ $player = 6 }
                 elsif (hex($hexchar) == 56)	{ $player = 7 }
@@ -395,9 +402,8 @@ if ($pid) {
                 elsif (hex($hexchar) == 51)	{ $player = 11 }
                 elsif (hex($hexchar) == 52)	{ $player = 12 }
                 else { $player = '' }
-                printf "object id: $player\n";
+                $mark_at = $player;
                 $controlkey=0;
-                next;
             } 
         }
         #control key 2. code
@@ -435,42 +441,105 @@ if ($pid) {
                 next;
             }
             elsif ($hexchar eq '35') {
-                #page up 
-                printf "PageUp pressed. No function assigned.\n";
+                # PageUp - Seek to given Object Id start
+                if ($player ne '') { $seek_to_object = "#$player"; }
+                else { $seek_to_object = '#'; }
                 $controlkey=0;
                 next;
             }
             elsif ($hexchar eq '36') {
-                #page down 
-                printf "PageDown pressed. No function assigned.\n";
+                # PageDown - Seek the last Object Id start
+                open(CSVa, '<', $events_csv) or die $!;
+                @ll = <CSVa>;
+                close CSVa;
+                $pos = "";
+                $seek= "";
+                CSV->autoflush;
+
+                while (@ll) {
+                    my $e = pop @ll;
+                    if ($e =~ /^#Mark: (.+)/) {
+                        @bl =  split /;/,$1;
+                        chomp $bl[5];
+                        $seek = $bl[3];
+                        $pos = $bl[0];
+                        last;
+                    }
+                }
+                if ($pos =~ /^\d+?$/) {
+                    printf "Last object [%d] start found after position %d. at %s\n",$bl[5],$pos,$seek;
+                    open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                    print FIFO "osd_show_text 'Seek to time position: $seek'\n";
+                    print FIFO "seek $seek 2\n";
+                    close FIFO;
+                } else {
+                    printf "No object mark found.\n";
+                }
                 $controlkey=0;
                 next;
             }
             elsif (hex($hexchar)>=80 and hex($hexchar)<=83) {
                 #FN 1-4 
                 $player = hex($hexchar)-79;
-                printf "object id: $player\n";
+                $mark_at = $player;
                 $controlkey=0;
-                next;
-
             } elsif ($hexchar eq '46') {
                 open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
                 print FIFO "stop\n";
                 close FIFO;
                 printf "\"end\" Event recording stopped.\n";
                 last;
-            }
-            else {
+            } else {
                 #unhandled control key
                 printf "Unhandled control key:\n";
                 printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
                 $controlkey=0;
                 next;
             }
+            #end control key 2
         } elsif ($controlkey==4) {
             $char=pack "H*",$utf8.$hexchar;
             $controlkey=0;
             $utf8='';
+        } 
+        # Seek to given object
+        if ($seek_to_object ne '0') {
+            if ($seek_to_object =~ /#(\d+)/) {
+                $player = $1; # visszaállítjuk a playert
+            } else {
+                $player = '';
+            }
+            $seek_to_object = 0;
+            open(CSVa, '<', $events_csv) or die $!;
+            @ll = <CSVa>;
+            close CSVa;
+            $pos = "";
+            $seek= "";
+            CSV->autoflush;
+
+            while (@ll) {
+                my $e = pop @ll;
+                if ($e =~ /^#Mark: (.+)/) {
+                    @bl =  split /;/,$1;
+                    chomp $bl[5];
+                    if ($bl[5] eq $mark_at) {
+                        $seek = $bl[3];
+                        $pos = $bl[0];
+                        last;
+                    }
+                }
+            }
+            if ($pos =~ /^\d+?$/) {
+                printf "Found object [%d] start at: %s\n",$bl[5],$seek;
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "osd_show_text 'Seek to time position: $seek'\n";
+                print FIFO "seek $seek 2\n";
+                close FIFO;
+            } else {
+                printf "No marked object found with reference id: $mark_at\n";
+            }
+            $mark_at = ''; 
+            next;
         }
         
         if ($hexchar eq '7f') {
@@ -502,12 +571,9 @@ if ($pid) {
             next;
         } 
         else {
+            # ANY else character 
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "get_time_pos\n";
-            if ($pause) {
-                print FIFO "pause\n";
-                $pause = 0;
-            } 
             close FIFO;
         }
         $rehexchar = chr(hex($hexchar)+hex(20));
@@ -519,6 +585,12 @@ if ($pid) {
                 }
                 $time = $1;
                 $ftime = strftime("\%H:\%M:\%S", gmtime($time));
+                if ($mark_at ne '') {
+                    printf CSV '#Mark: %d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c-1,'-','-',$time,0,$fs,"\n",$mark_at;
+                    printf "object id: $mark_at\n";
+                    $mark_at = "";
+                    last;
+                }
                 if (exists  $hash{ $char }) {
                     #kis betűs leütés aminek van cimkéje
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n",$player;
@@ -567,7 +639,8 @@ if ($pid) {
             }
             elsif (/^\*(.+)/) {
                 #mplayer error messages
-                print $_;
+                #print $_;
+                print $1;
             }
         # KID_TO_READ WHILE
         }
@@ -589,12 +662,13 @@ if ($pid) {
     close STDIN;
     # child process
 
-    if ((defined $seek) && $seek ne '') {
+    if ($seek ne '0') {
         $seek = "-ss $seek";
     } else {
         $seek = "";
     }
     exec("$mplayer $args $seek -quiet -slave -idle -input file=$FIFO -key-fifo-size 2 '$filename' -geometry 0%:0%;sleep 1") || print "*can't exec mplayer: $!";;
+    print $seek;
     exit(0);
 }
 #waitpid($pid, 0);
