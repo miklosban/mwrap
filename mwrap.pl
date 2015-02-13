@@ -54,7 +54,7 @@
 # 
 # 
 # VERSION INFO
-#       last modification: Mon Feb  9 14:41:26 CET 2015
+#       last modification: Fri Feb 13 18:45:01 CET 2015
 # 
 # 
 
@@ -224,6 +224,9 @@ if(exists $User_Preferences{'long_seek'}) {
 }
 if(exists $User_Preferences{'space_pause'}) {
     $ctr_enabled =  $User_Preferences{'space_pause'};
+}
+if(exists $User_Preferences{'mwrap_log'}) {
+    $mwrap_log =  $User_Preferences{'mwrap_log'};
 }
 # ---------------------------------------------------------------------------------------
 # keys
