@@ -65,6 +65,10 @@ use File::Basename;
 use IO::Handle;
 use POSIX qw{strftime};
 use Getopt::Long;
+#my $can_colorize=1;
+#eval "use Term::ANSIColor qw(:constants)";
+#if($@) { $can_colorize=0; }  #Don't try to use if unavailable
+
 #for bidirectional communication; we don't need it actually
 #use Socket;
 #use IO::Socket;
@@ -89,13 +93,14 @@ my $conf = '';
 my $ctr_enabled = 1; # pause control by space key enabled
 my $short_seek = 10;
 my $long_seek = 120;
+my $mwrap_log = "/tmp/mwrap.log";
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
 my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
-my ($char, $key, $value, @ll, $ll, @bl, $seek, $answer, $pos, $c, %hash, $project_dir, $pid, $time, $ftime, $duration,@f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
+my ($char, $key,$value,$answer,$c,%hash,$project_dir,$pid,$time,$ftime,$duration, @f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
 my $player = '';
 my $filename = '';
 my $keydef = 'keys.txt';
@@ -105,7 +110,19 @@ my $events_csv = "$rand_name.csv";
 my $mcode_pl = $bin_path.'mcode.pl';
 my $version='';
 my $seek_to_object = 0;
+my $seek_to_pos = 0;
 my $mark_at = '';
+my $ll = '';
+my $pos = '';
+my $seek = '';
+my $red = "\033[0;31m";
+my $green = "\033[0;32m";
+my $yellow = "\033[1;33m";
+my $blue = "\033[0;34m";
+my $lblue = "\033[1;34m";
+my $gray = "\033[1;30m";
+my $NC = "\033[0m";
+my $bold = "\e[1m";
 # ---------------------------------------------------------------------------------------
 # Command line options
 GetOptions ('k:s' => \$keydef, 'v' => \$version,'<>' => \&args);
@@ -160,6 +177,7 @@ if ($filename eq '') {
 # Set mwrap parameters
 if (-e "./mwrap.conf") {
     $conf = "./mwrap.conf";
+    print "-------------------------------------\n";
     printf "Local parameter settings read:\n";
 } else {
     if (-e $ENV{'HOME'} . '/.mwrap.conf') {
@@ -180,7 +198,9 @@ if (-e $conf) {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        print $lblue;
         printf "\t$var $value\n";
+        print $NC;
         $User_Preferences{$var} = $value;
     }
 }
@@ -209,7 +229,8 @@ if(exists $User_Preferences{'space_pause'}) {
 # keys
 if (-e $keydef) {
     open(KEYF, '<', $keydef);
-    print "Currently defined keys:\n";
+    print "-------------------------------------\n";
+    print "Currently defined keys:\n$lblue";
     while(<KEYF>) {
         printf "\t";
         printf;
@@ -217,19 +238,20 @@ if (-e $keydef) {
         chop $value;
         $hash{ $key } = $value;
     }
-    print "\n";
+    print "$NC-------------------------------------\n";
     close (KEYF);
 } else {
-    print "No keys defined!\nYou can specify key events in the 'keys.txt', like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
+    print $red,"No keys defined!$NC\nYou can specify key events in the 'keys.txt', like in the following example:\nj jumping\ns sleeping\nf fighting\n\n";
     # röptében kulcs definiálás!!!
 }
 # ---------------------------------------------------------------------------------------
 # mwrap starting
+
 if (-e $filename) {
     if ( ! -d $project_dir ) {
         mkdir "$project_dir" or die $!;
-
-        print "You need a unique id for this project\n";
+        
+        print $yellow,'You need a unique id for this project',$NC,"\n";
         $answer = <STDIN>;
         chop $answer;
         $events_csv = "$project_dir/$answer.csv";
@@ -246,12 +268,13 @@ if (-e $filename) {
         print CSV "#Field separator: $fs\n";
         printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
     } else {
-        print "$project_dir exists.\nDo you want to continue from the last event? (y,n)\n";
+        print "$project_dir exists.\n",$yellow,"Do you want to continue from the last event? (y,n)\n$gray";
         $answer = <STDIN>;
+        print $NC;
         chop $answer;
         if ($answer ne 'y') {
             do  {
-                print "You need a unique id for this project\n";
+                print $yellow,"You need a unique id for this project$NC\n";
                 $answer = <STDIN>;
                 chop $answer;
                 $events_csv = "$project_dir/$answer.csv";
@@ -274,58 +297,77 @@ if (-e $filename) {
             use File::Find;
             my $dir = "$project_dir";
             find( sub {push @f,basename("$File::Find::name$/") if (/\.csv$/)},$dir); 
-            print "Which project?\n";
+            print $yellow,"Type the number of your choice.$NC\n";
             my $i = 0;
             chop(@f);
             foreach (@f){
                 $i++;
-                printf "\t$i $_\n";
+                printf "[$green$i$NC]\t$_\n";
             }
-            $answer = <STDIN>;
-            chop $answer;
-            if ($answer>@f) {
-                exit 1;
+            use Term::ReadKey;
+            ReadMode 3;
+            if (defined($answer = ReadKey(0))) {
+                $hexchar = unpack "H*",$answer;
+                #print $hexchar;
+                if ($answer !~ /^\d+$/) {
+                    exit 1;
+                } elsif ($answer>@f) {
+                    exit 1;
+                }
             }
+            ReadMode 0;
+
             $answer = $f[$answer-1];
             $answer =~ s/\.csv$//; 
+            print $gray,$answer.".csv",$NC,"\n";
             $events_csv = "$project_dir/$answer.csv";
             open(CSV, '<', "$events_csv") or die $!;
-            @ll = <CSV>;
+            my @ll = <CSV>;
             close(CSV);
             while(@ll) {
                 $ll = pop @ll;
                 if ($ll =~ /^#/) { next; }
                 else { 
-                    print $ll;
+                    #print "\nLast line of `$answer.csv`:\n".$ll;
                     last;
                 }
             }
             open(CSV, '>>', "$events_csv") or die $!;
             CSV->autoflush(1);
-            @bl = split /$fs/,$ll;
+            my @bl = split /$fs/,$ll;
             $seek = $bl[3];
             $pos = $bl[0];
-            $player = $bl[5];
-            chomp $player;
-            if ($pos =~ /^\d+$/) {
-                print "Seeking to $seek\" position\n";
+            if(defined $bl[5]) {
+                $player = $bl[5];
             } else {
+                $player = '';
+            }
+            chomp $player;
+            #if ( $player eq '') { $player =}
+            if ($pos =~ /^\d+$/) {
+                my $ftime = strftime("\%H:\%M:\%S", gmtime($seek));
+                print "\nSeeking to $ftime position.";
+            } else {
+                print "\nStart from 00:00:00 position.";
                 $seek = 0;
                 $ll = '';
                 $pos = '';
+                $player = '';
             }
         }
     }
 } else {
-    print "Videofile: '$filename' does not exists.\n";
+    print $red,"Videofile: '$filename' does not exists.\n$NC";
     exit 1;
 }
 
-print "\nYou can control mplayer with the usual control keys (in the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n\n";
+print "\n-------------------------------------\nYou can control mplayer with the usual control keys (in the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n-------------------------------------\n";
 
 # last line from the csv;
 if ($ll =~ /\d+.+/) {
-    printf "%4.d %-15s%s %.2f\n",split /$fs/,$ll;
+    #printf "%4.d %-15s%s %.2f\n",split /$fs/,$ll;
+    my @v = split /$fs/,$ll;
+    printf "%4.d %-15s%s %s\n",$v[0],$v[1],$v[2],strftime("\%H:\%M:\%S", gmtime($v[3]));
 }
 
 # create fifo
@@ -344,7 +386,7 @@ if ($pid) {
     #if ($line ne '') {
     #    print "$line\n";
     #}
-    print "Press 'end' to finish!\n";
+    print "-------------------------------------$green\nEvent recording started. Press 'end' to finish!\n$NC";
 
     if ($pos =~ /\d+/) {
         $c = $pos+1;
@@ -382,7 +424,16 @@ if ($pid) {
             elsif ($hexchar eq 'c5') { $utf8 = 'c5' }
             $controlkey=4;
             next;
+        } elsif ($hexchar eq '2f') {
+            # /
+            $seek_to_pos = '#';
+            print $green,"Search for time position.$NC Type time like this:$green $bold 0:20:10:$NC\n";
+            open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+            print FIFO "pause\n";
+            close FIFO;
+            next;
         }
+
 
         if ($controlkey == 2 and ($hexchar eq '31' or $hexchar eq '32')) {
             # FN keys 5-12
@@ -450,12 +501,12 @@ if ($pid) {
             elsif ($hexchar eq '36') {
                 # PageDown - Seek the last Object Id start
                 open(CSVa, '<', $events_csv) or die $!;
-                @ll = <CSVa>;
+                my @ll = <CSVa>;
                 close CSVa;
                 $pos = "";
                 $seek= "";
                 CSV->autoflush;
-
+                my @bl;
                 while (@ll) {
                     my $e = pop @ll;
                     if ($e =~ /^#Mark: (.+)/) {
@@ -467,13 +518,13 @@ if ($pid) {
                     }
                 }
                 if ($pos =~ /^\d+?$/) {
-                    printf "Last object [%d] start found after position %d. at %s\n",$bl[5],$pos,$seek;
+                    printf "%sLast object [%d] start found after position %d. at %s%s\n",$green,$bl[5],$pos,$seek,$NC;
                     open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
                     print FIFO "osd_show_text 'Seek to time position: $seek'\n";
                     print FIFO "seek $seek 2\n";
                     close FIFO;
                 } else {
-                    printf "No object mark found.\n";
+                    print $red,"No object mark found.$NC\n";
                 }
                 $controlkey=0;
                 next;
@@ -487,7 +538,7 @@ if ($pid) {
                 open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
                 print FIFO "stop\n";
                 close FIFO;
-                printf "\"end\" Event recording stopped.\n";
+                printf "-------------------------------------\nEvent recording finished.\n";
                 last;
             } else {
                 #unhandled control key
@@ -501,7 +552,27 @@ if ($pid) {
             $char=pack "H*",$utf8.$hexchar;
             $controlkey=0;
             $utf8='';
-        } 
+        } # END controlkey check
+        if ($seek_to_pos ne '0') {
+            $seek_to_pos .= $char;
+            if ($seek_to_pos =~ /#(\d+):(\d+):(\d+):/) {
+                #printf "%sFound object [%d] start at: %s%s\n",$green,$bl[5],$seek,$NC;
+                #$ftime = ($+{'min'} * 60) + $+{'sec'} + ($+{'frac'}/(10**length(+$+{'frac'}))); 
+                my $seconds=eval($1*60*60+$2*60+$3);
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "osd_show_text 'Seek to time position: $seconds'\n";
+                print FIFO "seek $seconds 2\n";
+                close FIFO;
+                $controlkey=0;
+                $seek_to_pos = 0;
+                next;
+            } else {
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "osd_show_text 'Position: $seek_to_pos'\n";
+                close FIFO;
+                next;
+            }
+        }
         # Seek to given object
         if ($seek_to_object ne '0') {
             if ($seek_to_object =~ /#(\d+)/) {
@@ -511,12 +582,12 @@ if ($pid) {
             }
             $seek_to_object = 0;
             open(CSVa, '<', $events_csv) or die $!;
-            @ll = <CSVa>;
+            my @ll = <CSVa>;
             close CSVa;
             $pos = "";
             $seek= "";
             CSV->autoflush;
-
+            my @bl;
             while (@ll) {
                 my $e = pop @ll;
                 if ($e =~ /^#Mark: (.+)/) {
@@ -530,13 +601,13 @@ if ($pid) {
                 }
             }
             if ($pos =~ /^\d+?$/) {
-                printf "Found object [%d] start at: %s\n",$bl[5],$seek;
+                printf "%sFound object [%d] start at: %s%s\n",$green,$bl[5],$seek,$NC;
                 open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
                 print FIFO "osd_show_text 'Seek to time position: $seek'\n";
                 print FIFO "seek $seek 2\n";
                 close FIFO;
             } else {
-                printf "No marked object found with reference id: $mark_at\n";
+                print $red,"No marked object found with reference id: $mark_at$NC\n";
             }
             $mark_at = ''; 
             next;
@@ -545,7 +616,7 @@ if ($pid) {
         if ($hexchar eq '7f') {
             # backspace
             open(CSVa, '<', "$events_csv") or die $!;
-            @ll = <CSVa>;
+            my @ll = <CSVa>;
             close CSVa;
 
             $ll = pop(@ll);
@@ -604,9 +675,10 @@ if ($pid) {
                     # DURATION mesuring
                     # read the csv file for searching the lowercase letter pair last position
                     open(CSVa, '<', "$events_csv") or die $!;
-                    @ll = <CSVa>;
+                    my @ll = <CSVa>;
                     close CSVa;
                     $duration = 0;
+                    my @bl;
                     while(@ll) {
                         @bl = split /$fs/,pop(@ll);
                         $value = $bl[2];
@@ -640,8 +712,12 @@ if ($pid) {
             elsif (/^\*(.+)/) {
                 #mplayer error messages
                 #print $_;
-                print $1;
-            }
+                print $1."\n";
+                last;
+            } #else {
+            #  print $_."\n";
+            #    last;
+            #}
         # KID_TO_READ WHILE
         }
         # ha már nem él a pid kilépünk a leütés olvasásból (nem tudom lehet-e ilyen eset valaha)
@@ -658,28 +734,42 @@ if ($pid) {
     unlink $FIFO;
 # if pid
 } elsif ($pid == 0) {
+    # child process
     close STDERR;
     close STDIN;
-    # child process
 
-    if ($seek ne '0') {
+    if ($seek ne '0' and $seek ne '') {
         $seek = "-ss $seek";
     } else {
         $seek = "";
     }
-    exec("$mplayer $args $seek -quiet -slave -idle -input file=$FIFO -key-fifo-size 2 '$filename' -geometry 0%:0%;sleep 1") || print "*can't exec mplayer: $!";;
-    print $seek;
+    my $exec = ''.$mplayer.' '.$args.' '.$seek.' -quiet -slave -idle -input file='.$FIFO.' -key-fifo-size 2 \''.$filename.'\' -geometry 0%:0% '."2>$mwrap_log";
+    my $wl = ";echo '$exec' >> $mwrap_log";
+    exec($exec."$wl;while true; do cat fifo;echo '*$red Mplayer has stopped unexpectedly.$NC Press END or ^C to quit and see mwrap.log for information!';sleep 1;done");
+        
     exit(0);
 }
 #waitpid($pid, 0);
 
 ReadMode 0;
-print "\nEND\n";
 close(CSV) || warn "csv write error: $?";
 
-#exit 0;
+#print "\nmwrap event recording done.\n";
+
 # csv processing
-print "calling mcode.pl:\n";
+print "Press Enter to Skip CSV processing (You can do it later)\n\n";
+use Term::ReadKey;
+ReadMode 3;
+if (defined($char = ReadKey(0))) {
+    ReadMode 0;
+    $hexchar = unpack "H*",$char;
+    if ($hexchar eq '0a') {
+        exit 0;
+    }
+}
+ReadMode 0;
+
+print "performing: $mcode_pl '$filename' '$events_csv'\n";
 `$mcode_pl '$filename' '$events_csv' 1>&2`;
 
 #`mplayer $ARGV[0] -ss $time -frames 1 -vo jpeg -ao null 2>/dev/null;mv 00000001.jpg $time.jpg`;
