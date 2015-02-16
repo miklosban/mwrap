@@ -96,7 +96,6 @@ my $long_seek = 120;
 my $mwrap_log = "/tmp/mwrap.log";
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
-my $mplayer = $mplayer_path.' '.$mplayer_params;
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
@@ -228,6 +227,9 @@ if(exists $User_Preferences{'space_pause'}) {
 if(exists $User_Preferences{'mwrap_log'}) {
     $mwrap_log =  $User_Preferences{'mwrap_log'};
 }
+
+# Do not change these variables
+my $mplayer = $mplayer_path.' '.$mplayer_params;
 # ---------------------------------------------------------------------------------------
 # keys
 if (-e $keydef) {
