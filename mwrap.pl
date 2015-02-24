@@ -638,6 +638,7 @@ if ($pid) {
             print FIFO "osd_show_text 'Last event deleted'\n";
             print FIFO "get_time_pos\n";
             close FIFO;
+            print "Last event deleted!\n";
         } elsif ($hexchar eq '20' and $ctr_enabled==1) {
             # space to pause if control enabled
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
