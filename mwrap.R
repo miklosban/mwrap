@@ -1,7 +1,7 @@
 #
-
+print(1)
 if(!exists('csv')) {
-    csv <- 'P1060509.MOV.dir/gyerök.csv2'
+    print("file error")
 }
 
 ev<-read.csv2(csv,sep=';',header=F,col.names=c('id','text','code','time','length'),comment.char='#')

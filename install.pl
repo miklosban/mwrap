@@ -10,10 +10,10 @@ foreach (@modules) {
     chop($output);
     if ($output !~ /^$/) {
         if ($_ eq "Statistics::R") {
-            print "$_ is not installed. You can install it by: cpan $module\n";
+            print "The optional $_ module is missing. You can install it by: cpan $module\n";
         }
         else {
-            print "$_ is not installed. You can install it by: cpan $module\n";
+            print "The required $_ perl module is missing. You can install it by: cpan $module\n";
             exit;
         }
     } else {

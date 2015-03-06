@@ -273,7 +273,7 @@ if (-e $filename) {
         print CSV "#Field separator: $fs\n";
         printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
     } else {
-        print "$project_dir exists.\n",$yellow,"Do you want to continue from the last event? (y,n)\n$gray";
+        print "$red$project_dir$bold exists!\n",$NC,$yellow,"Do you want to continue of an existing project? (y,n)\n$gray";
         $answer = <STDIN>;
         print $NC;
         chop $answer;
@@ -326,38 +326,46 @@ if (-e $filename) {
             $answer =~ s/\.csv$//; 
             print $gray,$answer.".csv",$NC,"\n";
             $events_csv = "$project_dir/$answer.csv";
-            open(CSV, '<', "$events_csv") or die $!;
-            my @ll = <CSV>;
-            close(CSV);
-            while(@ll) {
-                $ll = pop @ll;
-                if ($ll =~ /^#/) { next; }
-                else { 
-                    #print "\nLast line of `$answer.csv`:\n".$ll;
-                    last;
+            
+            print $yellow,"Do you want to start from the last event? (y,n)\n$gray";
+            $answer = <STDIN>;
+            print $NC;
+            chop $answer;
+            if ($answer eq 'y') {
+                # seek to last event's position
+                open(CSV, '<', "$events_csv") or die $!;
+                my @ll = <CSV>;
+                close(CSV);
+                while(@ll) {
+                    $ll = pop @ll;
+                    if ($ll =~ /^#/) { next; }
+                    else { 
+                        #print "\nLast line of `$answer.csv`:\n".$ll;
+                        last;
+                    }
                 }
-            }
-            open(CSV, '>>', "$events_csv") or die $!;
-            CSV->autoflush(1);
-            my @bl = split /$fs/,$ll;
-            $seek = $bl[3];
-            $pos = $bl[0];
-            if(defined $bl[5]) {
-                $player = $bl[5];
-            } else {
-                $player = '';
-            }
-            chomp $player;
-            #if ( $player eq '') { $player =}
-            if ($pos =~ /^\d+$/) {
-                my $ftime = strftime("\%H:\%M:\%S", gmtime($seek));
-                print "\nSeeking to $ftime position.";
-            } else {
-                print "\nStart from 00:00:00 position.";
-                $seek = 0;
-                $ll = '';
-                $pos = '';
-                $player = '';
+                open(CSV, '>>', "$events_csv") or die $!;
+                CSV->autoflush(1);
+                my @bl = split /$fs/,$ll;
+                $seek = $bl[3];
+                $pos = $bl[0];
+                if(defined $bl[5]) {
+                    $player = $bl[5];
+                } else {
+                    $player = ''; #0
+                }
+                chomp $player;
+                #if ( $player eq '') { $player =}
+                if ($pos =~ /^\d+$/) {
+                    my $ftime = strftime("\%H:\%M:\%S", gmtime($seek));
+                    print "\nSeeking to $ftime position.";
+                } else {
+                    print "\nStart from 00:00:00 position.";
+                    $seek = 0;
+                    $ll = '';
+                    $pos = '';
+                    $player = '';
+                }
             }
         }
     }
@@ -409,7 +417,6 @@ if ($pid) {
     ReadMode 3;
     while (defined($char = ReadKey(0))) {
         $hexchar = unpack "H*",$char;
-        
         #printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
         if ($hexchar eq '7e') {
             # long control keys END
@@ -439,9 +446,8 @@ if ($pid) {
             next;
         }
 
-
+        # FN keys 5-12
         if ($controlkey == 2 and ($hexchar eq '31' or $hexchar eq '32')) {
-            # FN keys 5-12
             $controlkey = 3;
             next;
         }
@@ -533,9 +539,8 @@ if ($pid) {
                 }
                 $controlkey=0;
                 next;
-            }
-            elsif (hex($hexchar)>=80 and hex($hexchar)<=83) {
-                #FN 1-4 
+            } elsif (hex($hexchar)>=80 and hex($hexchar)<=83) {
+              #FN 1-4 
                 $player = hex($hexchar)-79;
                 $mark_at = $player;
                 $controlkey=0;
@@ -617,28 +622,41 @@ if ($pid) {
             $mark_at = ''; 
             next;
         }
-        
+        #printf(" Decimal: %d\tHex: %x\n", ord($char), ord($char));
         if ($hexchar eq '7f') {
-            # backspace
+            # backspace - delete the last event
             open(CSVa, '<', "$events_csv") or die $!;
             my @ll = <CSVa>;
             close CSVa;
-
-            $ll = pop(@ll);
-            if ($ll =~ /^\d+$fs/) {
-                open(CSVa, '>', "$events_csv") or die $!;
-                foreach (@ll) 
-                { 
-                    print CSVa $_; 
-                }
-                print CSVa "#$ll";
-                close CSVa;
+            my $l = '';
+            $l = pop(@ll);
+            if ($l =~ /^#/) {
+                print "The last event already deleted!\n"; # or this is the first
+                next;
             }
+            open (CSVa, "+<", $events_csv) or die "can't update $events_csv: $!";
+            my $addr;
+            while (<CSVa>) {
+                $addr = tell(CSVa) unless eof(CSVa);
+            }
+            truncate(CSVa, $addr) or die "can't truncate $events_csv: $!";
+            close CSVa;
+            open(CSVa, '>>', "$events_csv") or die $!;
+            print CSVa "#$l";
+            close CSVa;
+            # message
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "osd_show_text 'Last event deleted'\n";
             print FIFO "get_time_pos\n";
             close FIFO;
             print "Last event deleted!\n";
+        } elsif ($hexchar eq '0a') {
+            #enter
+            open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+            print FIFO "get_time_pos\n";
+            close FIFO;
+            $hexchar='20';
+            $char = ' ';
         } elsif ($hexchar eq '20' and $ctr_enabled==1) {
             # space to pause if control enabled
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
@@ -646,8 +664,7 @@ if ($pid) {
             printf "pause\n";
             close FIFO;
             next;
-        } 
-        else {
+        } else {
             # ANY else character 
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "get_time_pos\n";
@@ -671,7 +688,7 @@ if ($pid) {
                 if (exists  $hash{ $char }) {
                     #kis betűs leütés aminek van cimkéje
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%6$s] %-15s%s %s%s0%7$s',$c,$hash{$char},$char,$ftime,$fs,$player,"\n";
+                    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s%s0%7$s',$c,$hash{$char},$char,$ftime,$fs,$player,"\n",$bold,$NC;
                     #} elsif (exists $hash{ $rehexchar }) {
                 } elsif ((hex($hexchar)>64 and hex($hexchar)<91) or length($hexchar)==4) {
                     # letters A-Z
@@ -680,15 +697,27 @@ if ($pid) {
                     # UPPERCASE LETTERS
                     # DURATION mesuring
                     # read the csv file for searching the lowercase letter pair last position
-                    open(CSVa, '<', "$events_csv") or die $!;
+                    open(CSVa, '<', "$events_csv") or die "$events_csv: $!\nEXIT\n";
                     my @ll = <CSVa>;
                     close CSVa;
                     $duration = 0;
                     my @bl;
                     while(@ll) {
                         @bl = split /$fs/,pop(@ll);
+                        #skip the comments
+                        if ($bl[0] =~ /^#/) {
+                            next;
+                        }
+                        # skip lines if we moved back
+                        my $pl = $bl[5];
+                        chop $pl;
+                        if ($pl eq '') {$pl = '';}
+
+                        if ($bl[3]>$time) {
+                            next;
+                        }
                         $value = $bl[2];
-                        if ($value && $value =~ /^$rehexchar$/) {
+                        if ($value && $value =~ /^$rehexchar$/ && $player eq $pl) {
                             $duration = $time-$bl[3];
                             last;
                         }
@@ -696,11 +725,11 @@ if ($pid) {
                     if (exists $hash{ $rehexchar }) {
                         #nagy betűs leütés aminek van cimkéje
                         printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%6$s] %-15s%s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n";
+                        printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
                     } else {
                         #nagy betűs leütés aminek nincs cimkéje
                         printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$rehexchar."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%6$s] %-15s%s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n";
+                        printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
                     }
                 #} elsif (hex($hexchar)>48 and hex($hexchar)<58) {
                 #  $player = $char;
@@ -710,7 +739,7 @@ if ($pid) {
                 } else {
                     #kis betűs leütés aminek nincs cimkéje
                     printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%6$s] %-15s%s %s%s0%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n";
+                    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s%s0%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n",$bold,$NC;
                 }
                 $c = $c+1;
                 last;
