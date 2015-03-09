@@ -100,7 +100,7 @@ my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
 my ($char, $key,$value,$answer,$c,%hash,$project_dir,$pid,$time,$ftime,$duration, @f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
-my $player = '';
+my $player = 0;
 my $filename = '';
 my $keydef = 'keys.txt';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
@@ -366,6 +366,9 @@ if (-e $filename) {
                     $pos = '';
                     $player = '';
                 }
+            } else {
+                open(CSV, '>>', "$events_csv") or die $!;
+                CSV->autoflush(1);
             }
         }
     }
