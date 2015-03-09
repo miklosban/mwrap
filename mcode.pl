@@ -28,9 +28,8 @@
 #       I don't know yet. Write an email if you have any question.
 #
 #
-
 # VERSION INFO
-#       last modification: Fri Feb 13 18:45:01 CET 2015
+#       last modification: Fri Mar  6 17:07:35 CET 2015
 #
 #
 
@@ -269,7 +268,7 @@ if (-e $filename) {
 }
 
 if ($R_statistics) {
-    require "mwrap_modules.pl";
+    require $bin_path.'mwrap_modules.pl';
     our $R;
     my $mwrap_R = $bin_path.'mwrap.R';
   
