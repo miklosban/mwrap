@@ -52,16 +52,13 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-# 
-# VERSION INFO
-#       last modification: Fri Mar  6 17:07:35 CET 2015
-# 
-# 
+my $mwrap_version = 'Thu Apr 30 22:07:17 CEST 2015';
 
 use strict;
 use warnings;
 use Term::ReadKey;
 use File::Basename;
+use File::Copy;
 use IO::Handle;
 use POSIX qw{strftime};
 use Getopt::Long;
@@ -135,16 +132,7 @@ sub args {
 # ---------------------------------------------------------------------------------------
 # Version information
 if ($version) {
-    open(FILE, $name) or die("Unable to open myself:$name");
-    my $text = '';
-    while (<FILE>) {
-        if ($_ =~ /^#\s+last modification:/) {
-            $text .= "Last modification: ".$';
-            last;
-        } 
-    }
-    close(FILE);
-    print $text;
+    print $mwrap_version;
     exit 1;
 }
 # ---------------------------------------------------------------------------------------
@@ -167,6 +155,10 @@ if ($filename eq '') {
         }
     }
     close(FILE);
+    $text.=" VERSION INFO
+       last modification: $mwrap_version
+ 
+";
 
     print $less $text;
     close($less);
@@ -260,7 +252,8 @@ if (-e $filename) {
         $answer = <STDIN>;
         chop $answer;
         $events_csv = "$project_dir/$answer.csv";
-        open(CSV, '>', "$events_csv") or die $!;
+        open(CSV, '>>', "$events_csv") or die $!;
+        CSV->autoflush(1);
         print CSV "#Project ID: $answer\n";
         print CSV "#Event codes:\n";
         if (-e $keydef) {
@@ -271,6 +264,7 @@ if (-e $filename) {
             close (KEYF);
         }
         print CSV "#Field separator: $fs\n";
+        print CSV "#MWrap version: $mwrap_version\n";
         printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
     } else {
         print "$red$project_dir$bold exists!\n",$NC,$yellow,"Do you want to continue of an existing project? (y,n)\n$gray";
@@ -285,7 +279,7 @@ if (-e $filename) {
                 $events_csv = "$project_dir/$answer.csv";
             } while (-e $events_csv);
             
-            open(CSV, '>', "$events_csv") or die $!;
+            open(CSV, '>>', "$events_csv") or die $!;
             CSV->autoflush(1);
 
             print CSV "#Project ID: $answer\n";
@@ -344,8 +338,11 @@ if (-e $filename) {
                         last;
                     }
                 }
+                # create backup file?
+                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
+                print CSV "#Restarted recording from the last position\n";
                 my @bl = split /$fs/,$ll;
                 $seek = $bl[3];
                 $pos = $bl[0];
@@ -367,8 +364,24 @@ if (-e $filename) {
                     $player = '';
                 }
             } else {
+                open(CSV, '<', "$events_csv") or die $!;
+                my @ll = <CSV>;
+                close(CSV);
+                while(@ll) {
+                    $ll = pop @ll;
+                    if ($ll =~ /^#/) { next; }
+                    else { 
+                        #print "\nLast line of `$answer.csv`:\n".$ll;
+                        last;
+                    }
+                }
+                my @bl = split /$fs/,$ll;
+                $pos = $bl[0];
+
+                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
+                print CSV "#Restarted recording from the first position\n";
             }
         }
     }
@@ -519,7 +532,6 @@ if ($pid) {
                 close CSVa;
                 $pos = "";
                 $seek= "";
-                CSV->autoflush;
                 my @bl;
                 while (@ll) {
                     my $e = pop @ll;
@@ -599,7 +611,6 @@ if ($pid) {
             close CSVa;
             $pos = "";
             $seek= "";
-            CSV->autoflush;
             my @bl;
             while (@ll) {
                 my $e = pop @ll;
@@ -636,23 +647,27 @@ if ($pid) {
             if ($l =~ /^#/) {
                 print "The last event already deleted!\n"; # or this is the first
                 next;
+            } else {
+                open (CSVa, "+<", $events_csv) or die "can't update $events_csv: $!";
+                my $addr;
+                while (<CSVa>) {
+                    $addr = tell(CSVa) unless eof(CSVa);
+                }
+                #truncate the last line 
+                truncate(CSVa, $addr) or die "can't truncate $events_csv: $!";
+                close CSVa;
+                #write back the list line
+                open(CSVa, '>>', "$events_csv") or die $!;
+                chomp $l;
+                print CSVa "#$l\n";
+                close CSVa;
+                # message
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "osd_show_text 'Last event deleted'\n";
+                print FIFO "get_time_pos\n";
+                close FIFO;
+                print "Last event deleted!\n";
             }
-            open (CSVa, "+<", $events_csv) or die "can't update $events_csv: $!";
-            my $addr;
-            while (<CSVa>) {
-                $addr = tell(CSVa) unless eof(CSVa);
-            }
-            truncate(CSVa, $addr) or die "can't truncate $events_csv: $!";
-            close CSVa;
-            open(CSVa, '>>', "$events_csv") or die $!;
-            print CSVa "#$l";
-            close CSVa;
-            # message
-            open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
-            print FIFO "osd_show_text 'Last event deleted'\n";
-            print FIFO "get_time_pos\n";
-            close FIFO;
-            print "Last event deleted!\n";
         } elsif ($hexchar eq '0a') {
             #enter
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
@@ -695,8 +710,6 @@ if ($pid) {
                     #} elsif (exists $hash{ $rehexchar }) {
                 } elsif ((hex($hexchar)>64 and hex($hexchar)<91) or length($hexchar)==4) {
                     # letters A-Z
-                    # flush csv here
-                    CSV->autoflush;
                     # UPPERCASE LETTERS
                     # DURATION mesuring
                     # read the csv file for searching the lowercase letter pair last position

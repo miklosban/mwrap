@@ -27,11 +27,7 @@
 # 
 #       I don't know yet. Write an email if you have any question.
 #
-#
-# VERSION INFO
-#       last modification: Fri Mar  6 17:07:35 CET 2015
-#
-#
+my $mwrap_version = 'Thu Apr 30 22:07:17 CEST 2015';
 
 #use strict;
 use warnings;
@@ -86,21 +82,14 @@ sub args {
 }
 if ($filename ne '') {
     $project_dir = "$filename.dir";
-    $csv_file = "$project_dir/$csv_file";
+    $csv_file = "$project_dir/".basename("$csv_file");
 }
+print $csv_file."\n";
+print $filename."\n";
 # ---------------------------------------------------------------------------------------
 # Version information
 if ($version) {
-    open(FILE, $name) or die("Unable to open myself:$name");
-    my $text = '';
-    while (<FILE>) {
-        if ($_ =~ /^#\s+last modification:/) {
-            $text .= "Last modification: ".$';
-            last;
-        } 
-    }
-    close(FILE);
-    print $text;
+    print $mwrap_version;
     exit 1;
 }
 # ---------------------------------------------------------------------------------------
@@ -234,7 +223,7 @@ if (-e $filename) {
                 $fn = sprintf "%s_%s_%s.jpg",$id,$event,$seek;
                 if ( ! -e $fn ) {
                     print "grab the $seek position\n";
-                    `$mplayer '$video_file' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null`;
+                    `$mplayer '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null`;
                     if ( -e "00000001.jpg" ) {
                         move("00000001.jpg","$fn");
                         $image = Image::Magick->new;
@@ -244,7 +233,7 @@ if (-e $filename) {
                         $x = $image->Write("$fn");
                         warn "$x" if "$x";
                     } else {
-                        print "The video file is not seekable! No picture output.\nIf you want to check it, use this command:\nmplayer '$video_file' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null\n";
+                        print "The video file is not seekable! No picture output.\nIf you want to check it, use this command:\nmplayer '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null\n";
                     }
                 }
                 #`convert $fn -gravity south -pointsize 14 -stroke '#000C' -strokewidth 1 -annotate +0+10 '$event' -stroke none -fill white -annotate +0+10 '$event' $fn`;
@@ -263,7 +252,7 @@ if (-e $filename) {
     $answer = <STDIN>;
     chop $answer;
     if ($answer eq 'y' || $answer eq 'i') {
-        `mplayer $mplayer_params '$video_file' -sub '$csv_file.sub' -geometry 0%:0% 2>/dev/null`;
+        `mplayer $mplayer_params '$filename' -sub '$csv_file.sub' -geometry 0%:0% 2>/dev/null`;
     }
 }
 
