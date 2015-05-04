@@ -52,7 +52,7 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-my $mwrap_version = 'Thu Apr 30 22:07:17 CEST 2015';
+my $mwrap_version = 'Sat May  2 13:16:28 CEST 2015';
 
 use strict;
 use warnings;
@@ -243,8 +243,10 @@ if (-e $keydef) {
 }
 # ---------------------------------------------------------------------------------------
 # mwrap starting
-
+# Check the video file exists
 if (-e $filename) {
+    # Check the project directory exists (the video had prcessed)
+    # If not ...
     if ( ! -d $project_dir ) {
         mkdir "$project_dir" or die $!;
         
@@ -254,6 +256,7 @@ if (-e $filename) {
         $events_csv = "$project_dir/$answer.csv";
         open(CSV, '>>', "$events_csv") or die $!;
         CSV->autoflush(1);
+        print CSV "#Video File Name: $filename\n";
         print CSV "#Project ID: $answer\n";
         print CSV "#Event codes:\n";
         if (-e $keydef) {
@@ -267,10 +270,12 @@ if (-e $filename) {
         print CSV "#MWrap version: $mwrap_version\n";
         printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
     } else {
+        # if yes
         print "$red$project_dir$bold exists!\n",$NC,$yellow,"Do you want to continue of an existing project? (y,n)\n$gray";
         $answer = <STDIN>;
         print $NC;
         chop $answer;
+        # start a new session of the project
         if ($answer ne 'y') {
             do  {
                 print $yellow,"You need a unique id for this project$NC\n";
@@ -282,6 +287,7 @@ if (-e $filename) {
             open(CSV, '>>', "$events_csv") or die $!;
             CSV->autoflush(1);
 
+            print CSV "#Video File Name: $filename\n";
             print CSV "#Project ID: $answer\n";
             print CSV "#Event codes:\n";
             if (-e $keydef) {
@@ -291,8 +297,11 @@ if (-e $filename) {
                 }
                 close (KEYF);
             }
+            print CSV "#Field separator: $fs\n";
+            print CSV "#MWrap version: $mwrap_version\n";
             printf CSV '#id%1$sdescription%1$skey%1$stime%1$sduration%1$sobject id%2$s',"$fs","\n";
         } else {
+            # continue a previously interrupted session
             use File::Find;
             my $dir = "$project_dir";
             find( sub {push @f,basename("$File::Find::name$/") if (/\.csv$/)},$dir); 

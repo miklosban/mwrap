@@ -46,14 +46,18 @@ if (getlogin() eq 'root' || $< == 0) {
     }
     
     use File::Copy;
+    use File::Basename;
+    
+    $ldir = dirname $0;
 
     foreach(@files) {
-        if (-e $_) {
-            copy("$_","$path");
+        if (-e "$ldir/$_") {
+            # the separator is not OS independent (File::Spec)
+            copy("$ldir/$_","$path");
             system("chmod +x $path/$_");
-            print "copy $_ --> /usr/local/bin/ OK\n";
+            print "copy $ldir/$_ --> /usr/local/bin/ OK\n";
         } else {
-            print "no such file: $_\n";
+            print "$_ not found here: $ldir\n";
         }
     }
     print "You can specify a config file for override the default paramters. E.g.:\n";
