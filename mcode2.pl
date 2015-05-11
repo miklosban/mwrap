@@ -43,15 +43,18 @@ use POSIX;
 # default parameters; Define it in user level in the ~/.mwrap.conf file
 my($image, $x);
 my $mplayer_params = '-vf scale=960:540 -ao null';
-my $fs = ';';   # csv field separator
 my $mplayer_path = 'mplayer';
+my $cvlc_path = 'cvlc';
+my $vlc_params = '';
+my $vlc_host_port = '127.0.0.1:1234';
+my $fs = ';';   # csv field separator
 my $bin_path = '/usr/local/bin/';
 my $conf = '';
-my $ctr_enabled = 1; # pause control by space key enabled
 my $mwrap_log = "/tmp/mwrap.log";
 my $R_statistics = 0; # set it true if the Statistics::R package installed - IT NOT WORKS CURRENTLY
 my $create_subtitle = 1;
-my $video_player = 'vlc';
+my $video_player;
+my $vpa = 'MPLAYER';
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
 my $args = ''; # mplayer args like -vo x11
@@ -97,10 +100,7 @@ if ($version) {
 # Help text
 if ($csv_file eq '') {
     print "A result csv file name nedeed!\n";
-
     open(FILE, $name) or die("Unable to open myself:$name");
-    my $pager = $ENV{PAGER} || 'less';
-    open(my $less, '|-', $pager, '-e') || die "Cannot pipe to $pager: $!";
     my $text = '';
     while (<FILE>) {
         if ($_ =~ /^#!/) {
@@ -113,7 +113,9 @@ if ($csv_file eq '') {
         }
     }
     close(FILE);
-
+    $text.=" VERSION INFO\n       last modification: $mwrap_version\n\n";
+    my $pager = $ENV{PAGER} || 'less';
+    open(my $less, '|-', $pager, '-e') || die "Cannot pipe to $pager: $!";
     print $less $text;
     close($less);
     exit 1;
@@ -161,17 +163,37 @@ if(exists $User_Preferences{'bin_path'}) {
 if(exists $User_Preferences{'mplayer_path'}) {
     $mplayer_path =  $User_Preferences{'mplayer_path'};
 }
-if(exists $User_Preferences{'R_statistics'}) {
-    $mplayer_path =  $User_Preferences{'R_statistics'};
+if(exists $User_Preferences{'mwrap_log'}) {
+    $mwrap_log =  $User_Preferences{'mwrap_log'};
 }
-# Do not change these variables
-my $mplayer = $mplayer_path.' '.$mplayer_params;
+if(exists $User_Preferences{'vlc_params'}) {
+    $vlc_params =  $User_Preferences{'vlc_params'};
+}
+if(exists $User_Preferences{'vlc_host_port'}) {
+    $vlc_host_port =  $User_Preferences{'vlc_host_port'};
+}
+if(exists $User_Preferences{'cvlc_path'}) {
+    $cvlc_path =  $User_Preferences{'vlc_path'};
+}
+if(exists $User_Preferences{'vpa'}) {
+    $vpa =  $User_Preferences{'vpa'};
+}
+# Control commands
+if ($vpa eq "MPLAYER") {
+    $video_player = $mplayer_path.' '.$mplayer_params;
+} else {
+    $video_player = $cvlc_path.' '.$vlc_params;
+}
 
 ###--------------------------------------------------------- START HERE -------------------------###
 
 printf STDOUT $green,"mcode processing...\n",$NC;
 
 if ($create_subtitle) {
+    # sorba kell rendezni a csv tartalmát idő szerint
+    # és kell fejléc a sub fileba
+
+
     print $green,"Creating subtitle using the CSV file...\n",$NC;
     # create event subtitle - not works properly for more than one hour
     #`cat '$csv_file' | awk -F \\; 'function round(A){return int(A+0.5)}{printf "%.2d:%.2d:%2.2f",round(\$4/3600),round(\$4/60),\$4%60}{printf ",%.2d:%.2d:%2.2f\\n",round(\$4/3600),round(\$4/60),\$4%60+1}{print \$2}'>'$csv_file.sub'`;
@@ -179,7 +201,16 @@ if ($create_subtitle) {
     @ll = <CSV>;
     close(CSV);
     open(SUB,'>',"$csv_file.sub") or die "ÁÁááááááoüüüüüüúúúúúúúúúúúu";
-    #printf SUB "#$project_dir subtitle:\n";
+    printf SUB "[INFORMATION] project / video 
+[TITLE] Title of film.
+[AUTHOR] Author of film.
+[SOURCE] Arbitrary text
+[FILEPATH] Arbitrary text
+[DELAY] (time in frames to delay all subtitles
+[COMMENT] Arbitrary text
+[END INFORMATION]
+[SUBTITLE] <-- beginning of subtitle section, no closing tag required.
+[COLF]&HFFFFFF,[SIZE]12,[FONT]Times New Roman\n";
     while(@ll) {
        $ll = shift @ll;
        if ($ll =~ /^#/) { next; }
@@ -190,7 +221,7 @@ if ($create_subtitle) {
        my $minutes = floor($m/60);
        my $seconds = $m%60+$f;
     
-       printf SUB '%1$.2d:%2$.2d:%3$.2f,%1$.2d:%2$.2d:%4$.2f%6$s%5$s%6$s',$hour,$minutes,$seconds,$seconds+1,$bl[1],"\n";
+       printf SUB '%1$.2d:%2$.2d:%3$.2f,%1$.2d:%2$.2d:%4$.2f%6$s%5$s%6$s%6$s',$hour,$minutes,$seconds,$seconds+1,$bl[1],"\n";
     }
     close(SUB);
     print $green,"Done\n",$NC;
@@ -224,15 +255,21 @@ if (-e $filename) {
                 $fn = sprintf "%s_%s_%s.jpg",$id,$event,$seek;
                 if ( ! -e $fn ) {
                     print "grab the $seek position\n";
-                    if ($video_player eq 'mplayer') {
-                        `$mplayer '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null`;
-                    
-                    else {
-                        `$vlc '$file_name' --rate=1 --video-filter=scene --vout=dummy --start-time=0 --stop-time=11 --scene-format=jpg --scene-ratio=1 --scene-prefix=snap --scene-path=./ vlc://quit`
-                        #`$vlc '$file_name' --rate=1 --video-filter=scene --vout=dummy --scene-format=jpg --scene-ratio=1 --scene-prefix=snap --scene-path=./ vlc://quit`;
+                    if ($vpa eq 'MPLAYER') {
+                        `$video_player '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null`;
+                        if ( -e "00000001.jpg" ) {
+                            move("00000001.jpg","$fn");
+                        }
                     }
-                    if ( -e "00000001.jpg" ) {
-                        move("00000001.jpg","$fn");
+                    else {
+                        my $seek_end = $seek+1;
+                        `$video_player '$filename' --rate=1 --video-filter=scene --vout=dummy --start-time=$seek --stop-time=$seek_end --scene-format=jpg --scene-ratio=1 --scene-prefix=mwrap --scene-path=./ vlc://quit`;
+                        if ( -e "mwrap00001.jpg" ) {
+                            move("mwrap00001.jpg","$fn");
+                            unlink glob "mwrap0*.jpg";
+                        }
+                    }
+                    if ( -e $fn ) {
                         $image = Image::Magick->new;
                         $x = $image->Read("$fn");
                         $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'#000C',strokewidth=>1,text=>"$event");
@@ -246,11 +283,13 @@ if (-e $filename) {
                 #`convert $fn -gravity south -pointsize 14 -stroke '#000C' -strokewidth 1 -annotate +0+10 '$event' -stroke none -fill white -annotate +0+10 '$event' $fn`;
             }
         }
-        print $yellow,"Do you want see the single images' of the recorded moments? (y,n)\n",$NC;
-        $answer = <STDIN>;
-        chop $answer;
-        if ($answer eq 'y' || $answer eq 'i') {
-            `$mplayer $mplayer_params "mf://$id*.jpg" -mf fps=2`;
+        if ($vpa eq 'MPLAYER') {
+            print $yellow,"Do you want see the single images' of the recorded moments? (y,n)\n",$NC;
+            $answer = <STDIN>;
+            chop $answer;
+            if ($answer eq 'y' || $answer eq 'i') {
+                `$video_player $mplayer_params "mf://$id*.jpg" -mf fps=2`;
+            }
         }
     }
     
@@ -258,8 +297,16 @@ if (-e $filename) {
     print $yellow,"Do you want watch the subtitled video? (y,n)\n",$NC;
     $answer = <STDIN>;
     chop $answer;
-    if ($answer eq 'y' || $answer eq 'i') {
-        `mplayer $mplayer_params '$filename' -sub '$csv_file.sub' -geometry 0%:0% 2>/dev/null`;
+    if ($vpa eq 'MPLAYER') {
+        if ($answer eq 'y' || $answer eq 'i') {
+            `$video_player $mplayer_params '$filename' -sub '$csv_file.sub' -geometry 0%:0% 2>$mwrap_log`;
+        }
+    } else {
+        if ($answer eq 'y' || $answer eq 'i') {
+            print "$video_player $vlc_params '$filename' --sub-file='$csv_file.sub'";
+            `$video_player $vlc_params '$filename' --sub-file='$csv_file.sub' 2>$mwrap_log`;
+        }
+
     }
 }
 

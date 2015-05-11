@@ -222,7 +222,6 @@ if(exists $User_Preferences{'vlc_path'}) {
 if(exists $User_Preferences{'vpa'}) {
     $vpa =  $User_Preferences{'vpa'};
 }
-# Do not change these variables
 # Control commands
 if ($vpa eq "MPLAYER") {
     $get_time = "get_time";
