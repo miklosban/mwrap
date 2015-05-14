@@ -67,15 +67,24 @@ my $version='';
 my $ll = '';
 my $project_dir = '';
 my $csv_file = '';
-my $red = "\033[0;31m";
-my $green = "\033[0;32m";
-my $yellow = "\033[1;33m";
-my $blue = "\033[0;34m";
-my $lblue = "\033[1;34m";
-my $gray = "\033[1;30m";
-my $NC = "\033[0m";
-my $bold = "\e[1m";
-
+my $red; 
+my $green;
+my $yellow;
+my $blue;
+my $lblue;
+my $gray;
+my $NC;
+my $bold;
+if ($console == 'color') {
+    $red = "\033[0;31m";
+    $green = "\033[0;32m";
+    $yellow = "\033[1;33m";
+    $blue = "\033[0;34m";
+    $lblue = "\033[1;34m";
+    $gray = "\033[1;30m";
+    $NC = "\033[0m";
+    $bold = "\e[1m";
+}
 # ---------------------------------------------------------------------------------------
 # Command line options
 GetOptions ('c:s' => \$csv_file, 'f:s' => \$filename, 's:s' => \$create_subtitle, 'v' => \$version,'<>' => \&args);
