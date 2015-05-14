@@ -27,7 +27,7 @@
 # 
 #       I don't know yet. Write an email if you have any question.
 #
-my $mwrap_version = 'Thu Apr 30 22:07:17 CEST 2015';
+my $mwrap_version = 'Thu May 14 18:29:54 CEST 2015';
 
 #use strict;
 use warnings;
@@ -197,9 +197,6 @@ if ($create_subtitle) {
     print $green,"Creating subtitle using the CSV file...\n",$NC;
     # create event subtitle - not works properly for more than one hour
     #`cat '$csv_file' | awk -F \\; 'function round(A){return int(A+0.5)}{printf "%.2d:%.2d:%2.2f",round(\$4/3600),round(\$4/60),\$4%60}{printf ",%.2d:%.2d:%2.2f\\n",round(\$4/3600),round(\$4/60),\$4%60+1}{print \$2}'>'$csv_file.sub'`;
-    open(CSV, '<', "$csv_file") or die $red,"No path defined for $csv_file?",$NC;
-    @ll = <CSV>;
-    close(CSV);
     open(SUB,'>',"$csv_file.sub") or die "ÁÁááááááoüüüüüüúúúúúúúúúúúu";
     printf SUB "[INFORMATION] project / video 
 [TITLE] Title of film.
@@ -211,17 +208,26 @@ if ($create_subtitle) {
 [END INFORMATION]
 [SUBTITLE] <-- beginning of subtitle section, no closing tag required.
 [COLF]&HFFFFFF,[SIZE]12,[FONT]Times New Roman\n";
-    while(@ll) {
-       $ll = shift @ll;
-       if ($ll =~ /^#/) { next; }
-       my @bl = split /$fs/,$ll;
-       my $hour = floor($bl[3]/3600);
-       my $m = $bl[3]%3600;
-       my $f = $bl[3]-floor($bl[3]);
+    
+    open(my $data, '<', $csv_file) or die $red,"Could not open '$csv_file' $!\n",$NC;
+    my @array=();
+    while (my $line = <$data>) {
+        chomp $line;
+        if ($line =~ /^#/ ) { next }; 
+        push @array, [ split /;/, $line ];
+    }
+    close($data);
+    my @sortlist = sort { $a->[3] <=> $b->[3] } @array;
+
+    while(@sortlist) {
+       my @bl = shift @sortlist;
+       my $hour = floor($bl[0][3]/3600);
+       my $m = $bl[0][3]%3600;
+       my $f = $bl[0][3]-floor($bl[0][3]);
        my $minutes = floor($m/60);
        my $seconds = $m%60+$f;
     
-       printf SUB '%1$.2d:%2$.2d:%3$.2f,%1$.2d:%2$.2d:%4$.2f%6$s%5$s%6$s%6$s',$hour,$minutes,$seconds,$seconds+1,$bl[1],"\n";
+       printf SUB '%1$.2d:%2$.2d:%3$.2f,%1$.2d:%2$.2d:%4$.2f%6$s%5$s%6$s%6$s',$hour,$minutes,$seconds,$seconds+1,$bl[0][1],"\n";
     }
     close(SUB);
     print $green,"Done\n",$NC;
