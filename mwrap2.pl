@@ -114,7 +114,7 @@ my $lblue;
 my $gray;
 my $NC;
 my $bold;
-
+my $console;
 $console = 'color' if $Config{osname} eq 'linux';
 if ($console eq 'color') {
     $red = "\033[0;31m";
