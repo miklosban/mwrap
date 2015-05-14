@@ -63,6 +63,7 @@ use File::Copy;
 use IO::Handle;
 use POSIX qw{strftime};
 use Getopt::Long;
+use Config;
 
 # 
 # Set these variables as you need
@@ -81,7 +82,8 @@ our $short_seek = 10;
 our $long_seek = 120;
 our $mwrap_log = "/tmp/mwrap.log";
 our $video_player;
-our $vpa = "MPLAYER"; # default video player application
+our $vpa = "VLC"; # default video player application
+$vpa = 'MPLAYER' if $Config{osname} eq 'linux';
 our $socket;
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
@@ -112,7 +114,9 @@ my $lblue;
 my $gray;
 my $NC;
 my $bold;
-if ($console == 'color') {
+
+$console = 'color' if $Config{osname} eq 'linux';
+if ($console eq 'color') {
     $red = "\033[0;31m";
     $green = "\033[0;32m";
     $yellow = "\033[1;33m";

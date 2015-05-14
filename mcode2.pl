@@ -36,6 +36,8 @@ use Getopt::Long;
 use File::Basename;
 use File::Copy;
 use POSIX;
+use Config;
+
 # 
 # Set these variables as you need
 # ---------------------------------------------------------------------------------------
@@ -54,7 +56,8 @@ our $R_statistics = 0; # set it true if the Statistics::R package installed - IT
 our $Magick = 0; # set it true if the Image::Magick package installed
 my $create_subtitle = 1;
 my $video_player;
-my $vpa = 'MPLAYER';
+our $vpa = "VLC"; # default video player application
+$vpa = 'MPLAYER' if $Config{osname} eq 'linux';
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
 my $args = ''; # mplayer args like -vo x11
@@ -75,7 +78,9 @@ my $lblue;
 my $gray;
 my $NC;
 my $bold;
-if ($console == 'color') {
+my $console;
+$console = 'color' if $Config{osname} eq 'linux';
+if ($console eq 'color') {
     $red = "\033[0;31m";
     $green = "\033[0;32m";
     $yellow = "\033[1;33m";
