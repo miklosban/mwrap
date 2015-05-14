@@ -35,7 +35,6 @@ use warnings;
 use Getopt::Long;
 use File::Basename;
 use File::Copy;
-use Image::Magick;
 use POSIX;
 # 
 # Set these variables as you need
@@ -51,7 +50,8 @@ my $fs = ';';   # csv field separator
 my $bin_path = '/usr/local/bin/';
 my $conf = '';
 my $mwrap_log = "/tmp/mwrap.log";
-my $R_statistics = 0; # set it true if the Statistics::R package installed - IT NOT WORKS CURRENTLY
+our $R_statistics = 0; # set it true if the Statistics::R package installed - IT NOT WORKS CURRENTLY
+our $Magick = 0; # set it true if the Image::Magick package installed
 my $create_subtitle = 1;
 my $video_player;
 my $vpa = 'MPLAYER';
@@ -270,20 +270,25 @@ if (-e $filename) {
                     else {
                         my $seek_end = $seek+1;
                         `$video_player '$filename' --rate=1 --video-filter=scene --vout=dummy --start-time=$seek --stop-time=$seek_end --scene-format=jpg --scene-ratio=1 --scene-prefix=mwrap --scene-path=./ vlc://quit`;
-                        if ( -e "mwrap00001.jpg" ) {
-                            move("mwrap00001.jpg","$fn");
+                        if ( -e "mwrap00002.jpg" ) {
+                            move("mwrap00002.jpg","$fn");
                             unlink glob "mwrap0*.jpg";
                         }
                     }
-                    if ( -e $fn ) {
-                        $image = Image::Magick->new;
-                        $x = $image->Read("$fn");
-                        $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'#000C',strokewidth=>1,text=>"$event");
-                        $image->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'none',fill=>'white',text=>"$event");
-                        $x = $image->Write("$fn");
-                        warn "$x" if "$x";
-                    } else {
-                        print "The video file is not seekable! No picture output.\nIf you want to check it, use this command:\nmplayer '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null\n";
+                    if ($Magick) {
+                        require Image::Magick;
+                        import Image::Magick;
+                        my $IM = Image::Magick->new;
+
+                        if ( -e $fn ) {
+                            $x = $IM->Read("$fn");
+                            $IM->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'#000C',strokewidth=>1,text=>"$event");
+                            $IM->Annotate(gravity=>'south',antialias=>'true',x=>0,y=>10,pointsize=>14,stroke=>'none',fill=>'white',text=>"$event");
+                            $x = $IM->Write("$fn");
+                            warn "$x" if "$x";
+                        } else {
+                            print "The video file is not seekable! No picture output.\nIf you want to check it, use this command:\nmplayer '$filename' -ss $seek -frames 1 -vo jpeg -ao null 2>/dev/null\n";
+                        }
                     }
                 }
                 #`convert $fn -gravity south -pointsize 14 -stroke '#000C' -strokewidth 1 -annotate +0+10 '$event' -stroke none -fill white -annotate +0+10 '$event' $fn`;
@@ -317,12 +322,14 @@ if (-e $filename) {
 }
 
 if ($R_statistics) {
-    require $bin_path.'mwrap_modules.pl';
-    our $R;
+    #experimental code
+    require Statistics::R;
+    import Statistics::R;
+    my $R = Statistics::R->new;
     my $mwrap_R = $bin_path.'mwrap.R';
   
-    print $csv_file;
-    print `pwd`;
+    #print $csv_file."\n";
+    #print `pwd`;
 
     $R->startR ;
     $R->send(qq`csv = '$csv_file'`);
