@@ -135,7 +135,7 @@ sub args {
     my ($p1) = @_;
     if ($filename eq '') {
         $filename = catfile($pwd,$p1);
-        $project_dir = catfile($pwd,"$filename.dir");
+        $project_dir = "$filename.dir";
     } else { $keydef = catfile($pwd,$p1); }
 }
 # ---------------------------------------------------------------------------------------
