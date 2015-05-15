@@ -230,7 +230,7 @@ if(exists $User_Preferences{'vlc_path'}) {
     $vlc_path =  $User_Preferences{'vlc_path'};
 }
 if(exists $User_Preferences{'vpa'}) {
-    $vpa =  uc($User_Preferences{'vpa'}));
+    $vpa =  uc($User_Preferences{'vpa'});
 }
 # Control commands
 if ($vpa eq "MPLAYER") {
