@@ -64,48 +64,49 @@ use IO::Handle;
 use POSIX qw{strftime};
 use Getopt::Long;
 use Config;
+use File::Temp qw(tempdir);
+use File::Spec::Functions qw(catfile);
+use Cwd();
 
-# 
-# Set these variables as you need
 # ---------------------------------------------------------------------------------------
-# default parameters; Define it in user level in the ~/.mwrap.conf file
+# Default main variables
+# Set some of these variables as you need in
+# ~/.mwrap.conf or project_dir/mwrap.conf
+our $short_seek = 10;                                           # left, right arrow seek
+our $long_seek = 120;                                           # up, down arrow seek
+our $vpa = "VLC"; # default video player application
+our $FIFO = 'fifo';
+our ($c,$video_player,$socket);
+our $controlkey=0;
+our $tempdir = tempdir( CLEANUP => 1 );
+our $mwrap_log = catfile($tempdir, 'mwrap.log');
 my $mplayer_params = '-vf scale=960:540 -ao null';
 my $mplayer_path = 'mplayer';
 my $vlc_params = '';
 my $vlc_host_port = '127.0.0.1:1234';
 my $vlc_path = 'vlc';
-my $fs = ';';   # csv field separator
-my $bin_path = '/usr/local/bin/';
-my $conf = '';
-my $ctr_enabled = 1; # pause control by space key enabled
-our $short_seek = 10;
-our $long_seek = 120;
-our $mwrap_log = "/tmp/mwrap.log";
-our $video_player;
-our $vpa = "VLC"; # default video player application
-$vpa = 'MPLAYER' if $Config{osname} eq 'linux';
-our $socket;
-# ---------------------------------------------------------------------------------------
-# Do not change these variables
-my $args = ''; # video player args like (mplayer -vo x11)
-our $FIFO = 'fifo';
-my $name = $0;
-my ($char, $key,$value,$answer,%hash,$project_dir,$pid,$time,$ftime,$duration, @f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
-our $c;
+my $bin_path = '/usr/local/bin/' if $Config{osname} eq 'linux';    # default video player for Linux
+$vpa = 'MPLAYER' if $Config{osname} eq 'linux'; # default video player for Linux
+my $fs = ';';                                                   # csv field separator
+my $conf = '';  # config file path
+my $args = '';              # video player args like (mplayer -vo x11) - overwrite with command line argument 
+my $keydef = 'keys.txt';    # overwrite with command line argument
+my $version='';             # overwrite with command line argument
+my $name = $0;  #
+my ($char, $key,$value,$answer,%hash,$project_dir,$pid,$time,$ftime,$duration, @f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch,$get_time);
 my $player = 0;
 my $filename = '';
-my $keydef = 'keys.txt';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
 my $events_csv = "$rand_name.csv";
 my $mcode_pl = $bin_path.'mcode.pl';
-my $version='';
 my $seek_to_object = 0;
 my $seek_to_pos = 0;
 my $mark_at = '';
 my $ll = '';
 my $pos = '';
 my $seek = '';
+my $pwd = getcwd();
 my $red = ''; 
 my $green = '';
 my $yellow = '';
@@ -126,8 +127,6 @@ if ($console eq 'color') {
     $NC = "\033[0m";
     $bold = "\e[1m";
 }
-my $get_time;
-our $controlkey=0;
 # ---------------------------------------------------------------------------------------
 # Command line options
 GetOptions ('k:s' => \$keydef, 'v' => \$version,'<>' => \&args);
@@ -171,14 +170,12 @@ if ($filename eq '') {
 } 
 # ---------------------------------------------------------------------------------------
 # Set mwrap parameters
-if (-e "./mwrap.conf") {
-    $conf = "./mwrap.conf";
-    print "-------------------------------------\n";
-    printf "Local parameter settings read:\n";
+if (-e catfile($pwd,'mwrap.conf')) {
+    $conf = catfile($pwd, 'mwrap.conf');
 } else {
-    if (-e $ENV{'HOME'} . '/.mwrap.conf') {
-        $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
-        printf "Parameter settings read from home directory:\n";
+    my $hconf = catfile($ENV{'HOME'}, '.mwrap.conf');
+    if (-e $hconf) {
+        $conf = $hconf;
     } else {
         `echo "mplayer_params = $mplayer_params\nfs = ;\n" > mwrap.conf`;
         printf "There was no mwrap.conf defined. It has been created here with default values. You can edit it as you need.\n";
@@ -187,6 +184,7 @@ if (-e "./mwrap.conf") {
 my %User_Preferences = ();
 if (-e $conf) {
     open(CONFIG, $conf) or warn("Unable to open: $conf");
+    printf "Parameter settings read from $conf:\n";
     while (<CONFIG>) {
         chomp;                  # no newline
         s/#.*//;                # no comments
@@ -194,20 +192,21 @@ if (-e $conf) {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        next unless $value ne '';
         print $lblue;
-        printf "\t$var $value\n";
+        printf "$var: $value\n";
         print $NC;
         $User_Preferences{$var} = $value;
     }
+}
+if(exists $User_Preferences{'bin_path'}) {
+    $bin_path =  $User_Preferences{'bin_path'};
 }
 if (exists $User_Preferences{'fs'}) {
     $fs = $User_Preferences{'fs'};
 }
 if(exists $User_Preferences{'mplayer_params'}) {
     $mplayer_params = $User_Preferences{'mplayer_params'};
-}
-if(exists $User_Preferences{'bin_path'}) {
-    $bin_path =  $User_Preferences{'bin_path'};
 }
 if(exists $User_Preferences{'mplayer_path'}) {
     $mplayer_path =  $User_Preferences{'mplayer_path'};
@@ -217,9 +216,6 @@ if(exists $User_Preferences{'short_seek'}) {
 }
 if(exists $User_Preferences{'long_seek'}) {
     $long_seek =  $User_Preferences{'long_seek'};
-}
-if(exists $User_Preferences{'space_pause'}) {
-    $ctr_enabled =  $User_Preferences{'space_pause'};
 }
 if(exists $User_Preferences{'mwrap_log'}) {
     $mwrap_log =  $User_Preferences{'mwrap_log'};
@@ -234,7 +230,7 @@ if(exists $User_Preferences{'vlc_path'}) {
     $vlc_path =  $User_Preferences{'vlc_path'};
 }
 if(exists $User_Preferences{'vpa'}) {
-    $vpa =  $User_Preferences{'vpa'};
+    $vpa =  uc($User_Preferences{'vpa'}));
 }
 # Control commands
 if ($vpa eq "MPLAYER") {
@@ -508,7 +504,11 @@ if ($vpa eq 'MPLAYER') {
         $c = 1;
     }
 
-    system ("$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log &");
+    if ( $Config{osname} eq 'linux' ) {
+        system ("$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log &");
+    } else {
+        system ("$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log");
+    }
     sleep 2;
     use IO::Socket;
     my $host='127.0.0.1';
@@ -568,8 +568,8 @@ if (defined($char = ReadKey(0))) {
 }
 ReadMode 0;
 
-print "performing: $mcode_pl '$filename' '$events_csv'\n";
-`$mcode_pl '$filename' '$events_csv' 1>&2`;
+print "performing: $mcode_pl -f '$filename' -c '$events_csv'\n";
+`$mcode_pl -f '$filename' -c '$events_csv' 1>&2`;
 
 #`mplayer $ARGV[0] -ss $time -frames 1 -vo jpeg -ao null 2>/dev/null;mv 00000001.jpg $time.jpg`;
 #cat P1070099.MOV.events.csv | awk -F \; 'function round(A){return int(A+0.5)}{printf "%.2d:%.2d:%2.2f",round($4/3600),round($4/60),$4%60}{printf ",%.2d:%.2d:%2.2f\n",round($4/3600),round($4/60),$4%60+1}{print $2}'>subt.su
@@ -868,7 +868,7 @@ sub process {
         get_time();
         $hexchar='20';
         $char = ' ';
-    } elsif ($hexchar eq '20' and $ctr_enabled==1) {
+    } elsif ($hexchar eq '20') {
         # space to pause if control enabled
         ctr_pause();
         printf "pause\n";

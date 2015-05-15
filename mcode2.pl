@@ -29,47 +29,47 @@
 #
 my $mwrap_version = 'Thu May 14 18:29:54 CEST 2015';
 
-#use strict;
+use strict;
 use warnings;
-
 use Getopt::Long;
 use File::Basename;
 use File::Copy;
 use POSIX;
 use Config;
+use File::Temp qw(tempdir);
+use File::Spec::Functions qw(catfile);
+use Cwd();
 
-# 
-# Set these variables as you need
 # ---------------------------------------------------------------------------------------
-# default parameters; Define it in user level in the ~/.mwrap.conf file
-my($image, $x);
+# Default main variables
+# Set some of these variables as you need in
+# ~/.mwrap.conf or project_dir/mwrap.conf
+our $vpa = "VLC"; # default video player application
+$vpa = 'MPLAYER' if $Config{osname} eq 'linux';
+my $use_StatisticsR = 0; # set it true if the Statistics::R package installed - IT NOT WORKS CURRENTLY
+my $use_ImageMagick = 0; # set it true if the Image::Magick package installed
 my $mplayer_params = '-vf scale=960:540 -ao null';
 my $mplayer_path = 'mplayer';
 my $cvlc_path = 'cvlc';
 my $vlc_params = '';
 my $vlc_host_port = '127.0.0.1:1234';
 my $fs = ';';   # csv field separator
-my $bin_path = '/usr/local/bin/';
+my $bin_path = '/usr/local/bin/' if $Config{osname} eq 'linux';    # default video player for Linux
+my $tempdir = tempdir( CLEANUP => 1 );
+my $mwrap_log = catfile($tempdir, 'mwrap.log');
 my $conf = '';
-my $mwrap_log = "/tmp/mwrap.log";
-our $R_statistics = 0; # set it true if the Statistics::R package installed - IT NOT WORKS CURRENTLY
-our $Magick = 0; # set it true if the Image::Magick package installed
-my $create_subtitle = 1;
-my $video_player;
-our $vpa = "VLC"; # default video player application
-$vpa = 'MPLAYER' if $Config{osname} eq 'linux';
-# ---------------------------------------------------------------------------------------
-# Do not change these variables
-my $args = ''; # mplayer args like -vo x11
 my $name = $0;
-my ($answer,$time);
+my ($answer,$time,$image,$x,$video_player,$id,@bl,$pos,$seek,$event,$fn);
 my $player = '';
-my $filename = '';
 my $mcode_pl = $bin_path.'mcode.pl';
-my $version='';
+my $filename = '';          # overwrite with command line argument
+my $version='';             # overwrite with command line argument
+my $create_subtitle = 1;    # overwrite with command line argument
+my $csv_file = '';          # overwrite with command line argument
+my $args = '';              # mplayer args like -vo x11 - overwrite with command line argument
 my $ll = '';
 my $project_dir = '';
-my $csv_file = '';
+my $pwd = getcwd();
 my $red = ''; 
 my $green = '';
 my $yellow = '';
@@ -95,25 +95,22 @@ if ($console eq 'color') {
 GetOptions ('c:s' => \$csv_file, 'f:s' => \$filename, 's:s' => \$create_subtitle, 'v' => \$version,'<>' => \&args);
 sub args {
     my $p1 = shift(@_);
-    if ($filename eq '') { $filename = $p1; }
-    elsif ($csv_file eq '') { $csv_file = $p1; }
+    if ($p1 =~ /^(.+)\.dir.(.+)\.csv$/) {
+        $filename = $1;
+        $csv_file = "$2.csv";
+    }
 }
-if ($filename ne '') {
+if ($filename ne '' and $csv_file ne '') {
     $project_dir = "$filename.dir";
-    $csv_file = "$project_dir/".basename("$csv_file");
+    $csv_file = catfile($project_dir,basename("$csv_file"));
 }
-print $csv_file."\n";
-print $filename."\n";
-# ---------------------------------------------------------------------------------------
-# Version information
-if ($version) {
-    print "$mwrap_version\n";
-    exit 1;
-}
-# ---------------------------------------------------------------------------------------
-# Help text
-if ($csv_file eq '') {
-    print "A result csv file name nedeed!\n";
+my $no_files = 0;
+if (! -e $csv_file) {$no_files = 1;}
+if (! -e $filename) {$no_files = 1;}
+if (! -e $project_dir) {$no_files = 1;}
+
+if ($no_files) {
+    print "A video file and a csv file name nedeed!\n";
     open(FILE, $name) or die("Unable to open myself:$name");
     my $text = '';
     while (<FILE>) {
@@ -133,17 +130,23 @@ if ($csv_file eq '') {
     print $less $text;
     close($less);
     exit 1;
-} 
+}
+print "Processing $csv_file\n";
+print "Video file is: $filename\n";
+# ---------------------------------------------------------------------------------------
+# Version information
+if ($version) {
+    print "$mwrap_version\n";
+    exit 1;
+}
 # ---------------------------------------------------------------------------------------
 # Set mwrap parameters
-if (-e "./mwrap.conf") {
-    $conf = "./mwrap.conf";
-    print "-------------------------------------\n";
-    printf "Local parameter settings read:\n";
+if (-e catfile($pwd,'mwrap.conf')) {
+    $conf = catfile($pwd, 'mwrap.conf');
 } else {
-    if (-e $ENV{'HOME'} . '/.mwrap.conf') {
-        $conf = sprintf $ENV{'HOME'} . '/.mwrap.conf';
-        printf "Parameter settings read from home directory:\n";
+    my $hconf = catfile($ENV{'HOME'}, '.mwrap.conf');
+    if (-e $hconf) {
+        $conf = $hconf;
     } else {
         `echo "mplayer_params = $mplayer_params\nfs = ;\n" > mwrap.conf`;
         printf "There was no mwrap.conf defined. It has been created here with default values. You can edit it as you need.\n";
@@ -152,6 +155,7 @@ if (-e "./mwrap.conf") {
 my %User_Preferences = ();
 if (-e $conf) {
     open(CONFIG, $conf) or warn("Unable to open: $conf");
+    printf "Parameter settings read from $conf:\n";
     while (<CONFIG>) {
         chomp;                  # no newline
         s/#.*//;                # no comments
@@ -159,20 +163,21 @@ if (-e $conf) {
         s/\s+$//;               # no trailing white
         next unless length;     # anything left?
         my ($var, $value) = split(/\s*=\s*/, $_, 2);
+        next unless $value ne '';
         print $lblue;
-        printf "\t$var $value\n";
+        printf "$var: $value\n";
         print $NC;
         $User_Preferences{$var} = $value;
     }
+}
+if(exists $User_Preferences{'bin_path'}) {
+    $bin_path =  $User_Preferences{'bin_path'};
 }
 if (exists $User_Preferences{'fs'}) {
     $fs = $User_Preferences{'fs'};
 }
 if(exists $User_Preferences{'mplayer_params'}) {
     $mplayer_params = $User_Preferences{'mplayer_params'};
-}
-if(exists $User_Preferences{'bin_path'}) {
-    $bin_path =  $User_Preferences{'bin_path'};
 }
 if(exists $User_Preferences{'mplayer_path'}) {
     $mplayer_path =  $User_Preferences{'mplayer_path'};
@@ -190,7 +195,7 @@ if(exists $User_Preferences{'cvlc_path'}) {
     $cvlc_path =  $User_Preferences{'vlc_path'};
 }
 if(exists $User_Preferences{'vpa'}) {
-    $vpa =  $User_Preferences{'vpa'};
+    $vpa =  uc($User_Preferences{'vpa'});
 }
 # Control commands
 if ($vpa eq "MPLAYER") {
@@ -289,7 +294,7 @@ if (-e $filename) {
                             unlink glob "mwrap0*.jpg";
                         }
                     }
-                    if ($Magick) {
+                    if ($use_ImageMagick) {
                         require Image::Magick;
                         import Image::Magick;
                         my $IM = Image::Magick->new;
@@ -335,7 +340,7 @@ if (-e $filename) {
     }
 }
 
-if ($R_statistics) {
+if ($use_StatisticsR) {
     #experimental code
     require Statistics::R;
     import Statistics::R;
