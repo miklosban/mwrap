@@ -507,8 +507,9 @@ if ($vpa eq 'MPLAYER') {
 
     if ( $Config{osname} eq 'linux' ) {
         system ("$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log &");
+        #print "$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log &";
     } else {
-        system ("$video_player '$filename' $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log");
+        system ("start CMD /C CALL $video_player \"$filename\" $seek --intf rc --rc-host $vlc_host_port 2>$mwrap_log");
     }
     sleep 2;
     use IO::Socket;
@@ -652,6 +653,18 @@ sub ctr_osd {
 sub process {
     $char = shift;
     $hexchar = unpack "H*",$char;
+    my ($END,$PgDown,$PgUp,$Home);
+    if ( $Config{osname} eq 'linux' ) {
+        $END = '46';
+        $PgDown = '36';
+        $PgUp = '35';
+        $Home = '48';
+    } else {
+        $END = '34';
+        $PgDown = '73';
+        $PgUp = '79';
+        $Home = '79';
+    }
     #printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
     if ($hexchar eq '7e') {
         # long control keys END
@@ -726,14 +739,14 @@ sub process {
             $controlkey=0;
             return "next";
         }
-        elsif ($hexchar eq '35') {
+        elsif ($hexchar eq $PgUp) { #79
             # PageUp - Seek to given Object Id start
             if ($player ne '') { $seek_to_object = "#$player"; }
             else { $seek_to_object = '#'; }
             $controlkey=0;
             return "next";
         }
-        elsif ($hexchar eq '36') {
+        elsif ($hexchar eq $PgDown) { #73
             # PageDown - Seek the last Object Id start
             open(CSVa, '<', $events_csv) or die $!;
             my @ll = <CSVa>;
@@ -765,7 +778,7 @@ sub process {
             $player = hex($hexchar)-79;
             $mark_at = $player;
             $controlkey=0;
-        } elsif ($hexchar eq '46') {
+        } elsif ($hexchar eq $END) {
             ctr_stop();
             printf "-------------------------------------\nEvent recording terminated.\n";
             return "last";
@@ -904,7 +917,7 @@ sub process {
     } else {
         my $line;
         if (defined($line = <$socket>)) {
-            if($line =~ /> (\d+)/) {
+            if($line =~ /[> ]?(\d+)/) {
                 writeout($1);
             } else {
                 print "Something is wrong: $line.\n";
