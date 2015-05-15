@@ -134,9 +134,9 @@ GetOptions ('k:s' => \$keydef, 'v' => \$version,'<>' => \&args);
 sub args {
     my ($p1) = @_;
     if ($filename eq '') {
-        $filename = $p1;
-        $project_dir = "$filename.dir";
-    } else { $keydef = $p1; }
+        $filename = catfile($pwd,$p1);
+        $project_dir = catfile($pwd,"$filename.dir");
+    } else { $keydef = catfile($pwd,$p1); }
 }
 # ---------------------------------------------------------------------------------------
 # Version information
@@ -273,7 +273,7 @@ if (-e $filename) {
         print $yellow,'You need a unique id for this project',$NC,"\n";
         $answer = <STDIN>;
         chop $answer;
-        $events_csv = "$project_dir/$answer.csv";
+        $events_csv = catfile($project_dir,"$answer.csv");
         open(CSV, '>>', "$events_csv") or die $!;
         CSV->autoflush(1);
         print CSV "#Video File Name: $filename\n";
@@ -301,7 +301,7 @@ if (-e $filename) {
                 print $yellow,"You need a unique id for this project$NC\n";
                 $answer = <STDIN>;
                 chop $answer;
-                $events_csv = "$project_dir/$answer.csv";
+                $events_csv = catfile($project_dir,"$answer.csv");
             } while (-e $events_csv);
             
             open(CSV, '>>', "$events_csv") or die $!;
@@ -348,7 +348,7 @@ if (-e $filename) {
             $answer = $f[$answer-1];
             $answer =~ s/\.csv$//; 
             print $gray,$answer.".csv",$NC,"\n";
-            $events_csv = "$project_dir/$answer.csv";
+            $events_csv = catfile($project_dir,"$answer.csv");
             
             print $yellow,"Do you want to start from the last event? (y,n)\n$gray";
             $answer = <STDIN>;
@@ -368,7 +368,7 @@ if (-e $filename) {
                     }
                 }
                 # create backup file?
-                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
+                copy("$events_csv", catfile($project_dir,basename($events_csv)."~1")) or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
                 print CSV "#Restarted recording from the last position\n";
@@ -407,7 +407,7 @@ if (-e $filename) {
                 my @bl = split /$fs/,$ll;
                 $pos = $bl[0];
 
-                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
+                copy("$events_csv", catfile($project_dir,basename($events_csv)."~1")) or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
                 print CSV "#Restarted recording from the first position\n";
