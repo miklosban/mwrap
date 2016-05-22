@@ -52,7 +52,7 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-my $mwrap_version = 'Sat May  2 13:16:28 CEST 2015';
+my $mwrap_version = 'Sun May 22 14:24:21 CEST 2016';
 
 use strict;
 use warnings;
@@ -347,24 +347,34 @@ if (-e $filename) {
                         last;
                     }
                 }
+                if ($ll =~ /^#/) { $ll = ''; }
                 # create backup file?
                 copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
                 print CSV "#Restarted recording from the last position\n";
-                my @bl = split /$fs/,$ll;
-                $seek = $bl[3];
-                $pos = $bl[0];
-                if(defined $bl[5]) {
-                    $player = $bl[5];
-                } else {
-                    $player = ''; #0
-                }
-                chomp $player;
-                #if ( $player eq '') { $player =}
-                if ($pos =~ /^\d+$/) {
-                    my $ftime = strftime("\%H:\%M:\%S", gmtime($seek));
-                    print "\nSeeking to $ftime position.";
+                if ($ll ne '') {
+                    my @bl = split /$fs/,$ll;
+                    $seek = $bl[3];
+                    $pos = $bl[0];
+                
+                    if(defined $bl[5]) {
+                        $player = $bl[5];
+                    } else {
+                        $player = ''; #0
+                    }
+                    chomp $player;
+                    #if ( $player eq '') { $player =}
+                    if ($pos =~ /^\d+$/) {
+                        my $ftime = strftime("\%H:\%M:\%S", gmtime($seek));
+                        print "\nSeeking to $ftime position.";
+                    } else {
+                        print "\nStart from 00:00:00 position.";
+                        $seek = 0;
+                        $ll = '';
+                        $pos = '';
+                        $player = ''; 
+                    }
                 } else {
                     print "\nStart from 00:00:00 position.";
                     $seek = 0;
@@ -402,7 +412,7 @@ if (-e $filename) {
 print "\n-------------------------------------\nYou can control mplayer with the usual control keys (in the mplayer window!).\nSome useful mplayer key codes:\nq Quit\n{ and } Halve/double current playback speed\n<- and ->  Seek backward/forward 10 seconds\nup and down Seek forward/backward 1 minute\n-------------------------------------\n";
 
 # last line from the csv;
-if ($ll =~ /\d+.+/) {
+if ($ll =~ /^\d+.+/) {
     #printf "%4.d %-15s%s %.2f\n",split /$fs/,$ll;
     my @v = split /$fs/,$ll;
     printf "%4.d %-15s%s %s\n",$v[0],$v[1],$v[2],strftime("\%H:\%M:\%S", gmtime($v[3]));
@@ -426,7 +436,7 @@ if ($pid) {
     #}
     print "-------------------------------------$green\nEvent recording started. Press 'end' to finish!\n$NC";
 
-    if ($pos =~ /\d+/) {
+    if ($pos =~ /^\d+$/) {
         $c = $pos+1;
     } else {
         $c = 1;

@@ -61,13 +61,14 @@ use Term::ReadKey;
 use File::Basename;
 use File::Copy;
 use IO::Handle;
-use POSIX qw{strftime};
+#use POSIX qw{strftime};
 use POSIX;
 use Getopt::Long;
 use Config;
 use File::Temp qw(tempdir);
 use File::Spec::Functions qw(catfile);
 use Cwd();
+use Time::HiRes qw(usleep);
 if ($Config{osname} eq 'MSWin32') {
     # color console
     require Win32::Console::ANSI;
@@ -85,6 +86,7 @@ our ($c,$video_player,$socket);
 our $controlkey=0;
 our $tempdir = tempdir( CLEANUP => 1 );
 our $mwrap_log = catfile($tempdir, 'mwrap.log');
+our $combo = '';
 my ($char,$key,$value,$answer,%hash,$project_dir, $pid,$time,$ftime,$duration,@f,$hexchar,$rehexchar, $rehexcharT,$utf8,$switch,$get_time,$mcode_pl);
 my $mplayer_params = '-vf scale=960:540 -ao null';
 my $mplayer_path = 'mplayer';
@@ -455,15 +457,25 @@ if ($vpa eq 'MPLAYER') {
 
         my $interval = 0; 
         ReadMode 3;
-        my $ret;
-        while (defined($char = ReadKey(0))) {
-            $ret = process($char);
-            if ($ret ne '') {
-                next if $ret eq 'next';
+        my $ret = '';
+        my $mbc = 0;
+        while (1) {
+            if (defined($char = ReadKey(-1))) {
+                $ret = process($char);
+                $mbc++;
                 last if $ret eq 'last';
+                shift->(@_), last unless $pid;
+            } else {
+                if($mbc>0) {
+                    $ret = process('');
+                    $combo = '';
+                    last if $ret eq 'last';
+                    shift->(@_), last unless $pid;
+                }
+                $mbc = 0;
+                usleep(30000);
+                shift->(@_), last unless $pid;
             }
-            # ha már nem él a pid kilépünk a leütés olvasásból (nem tudom lehet-e ilyen eset valaha)
-            shift->(@_), last unless $pid;
         }
         # Ha vége a leütés olvasásnak
         ReadMode 0;
@@ -527,14 +539,23 @@ if ($vpa eq 'MPLAYER') {
     $line = <$socket>; # first answer: 0
     ReadMode 3;
     my $ret;
+    my $mbc = 0;
     while (1)
     {  
-        if (defined($char = ReadKey(0))) {
+        if (defined($char = ReadKey(-1))) {
             $ret = process($char);
             if ($ret) {
                 next if $ret eq 'next';
                 last if $ret eq 'last';
             }
+            $mbc++;
+        } else {
+            if($mbc>0) {
+                $ret = process('');
+            }
+            $mbc = 0;
+            usleep(30000);
+
         }
     }
     ReadMode 0;
@@ -651,6 +672,7 @@ sub process {
     # processing virtual keycodes...
     $char = shift;
     $hexchar = unpack "H*",$char;
+  
     # OPEARTING SYSTEM DEPENDENT VIRTUAL KEYCODES
     # external virtual keycode definitions???
     my ($END,$PgDown,$PgUp,$Home);
@@ -665,89 +687,62 @@ sub process {
         $PgUp = '79';
         $Home = '79';
     }
-    #printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
-    if ($hexchar eq '7e') {
-        # long control keys END
-        $controlkey=0;
+
+    if ($char ne '') {
+        #processing virtual keycodes after keydown event
+        $combo .= $hexchar;
         return "next";
-    } elsif ($hexchar eq '1b') {
-        # long control keys 2. character
-        $controlkey=1;
-        return "next";
-    } elsif ($hexchar eq '5b' or $hexchar eq '4f') {
-        # long control keys 2. character
-        $controlkey=2;
-        return "next";
-    } elsif ($hexchar eq 'c3' or $hexchar eq 'c5') {
-        #utf8 characters: öüóőúéáűí...
-        if ($hexchar eq 'c3') { $utf8 = 'c3' }
-        elsif ($hexchar eq 'c5') { $utf8 = 'c5' }
-        $controlkey=4;
-        return "next";
-    } elsif ($hexchar eq '2f') {
-        # /
-        $seek_to_pos = '#';
-        print $green,"Search for time position.$NC Type time like this:$green $bold 0:20:10:$NC\n";
-        ctr_pause();
-        return "next";
-    }
-    # FN keys 5-12
-    if ($controlkey == 2 and ($hexchar eq '31' or $hexchar eq '32')) {
-        $controlkey = 3;
-        return "next";
-    }
-    #control key 3. code
-    if ($controlkey==3) {
-        if (hex($hexchar)==48 or hex($hexchar)==49 or hex($hexchar)==51 or hex($hexchar)==52 or hex($hexchar)==53 or hex($hexchar)==55 or hex($hexchar)==56 or hex($hexchar)==57) {
-            #FN 5-8, 9-12 
-            if (hex($hexchar) == 53) { $player = 5 }
-            elsif (hex($hexchar) == 55)	{ $player = 6 }
-            elsif (hex($hexchar) == 56)	{ $player = 7 }
-            elsif (hex($hexchar) == 57)	{ $player = 8 }
-            elsif (hex($hexchar) == 48)	{ $player = 9 }
-            elsif (hex($hexchar) == 49)	{ $player = 10 }
-            elsif (hex($hexchar) == 51)	{ $player = 11 }
-            elsif (hex($hexchar) == 52)	{ $player = 12 }
-            else { $player = '' }
-            $mark_at = $player;
-            $controlkey=0;
-        } 
-    }
-    #control key 2. code
-    if ($controlkey==2) {
-        if ($hexchar eq '41') {
-            printf "Seek forward $long_seek.\n";
-            ctr_seek($long_seek,'+');
-            $controlkey=0;
-            return "next";
-        }
-        elsif ($hexchar eq '42') {
-            printf "Seek backward $long_seek sec.\n";
-            ctr_seek("$long_seek","-");
-            $controlkey=0;
-            return "next";
-        }
-        elsif ($hexchar eq '43') {
+    } else {
+        #end of virtual keycodes
+        if ($combo eq '1b5b43') {
+            #right arrpw
             printf "Seek forward $short_seek sec.\n";
             ctr_seek($short_seek,"+");
             $controlkey=0;
             return "next";
         }
-        elsif ($hexchar eq '44') {
+        elsif ($combo eq '1b5b44') {
+            #left arrow
             printf "Seek backward $short_seek sec.\n";
             ctr_seek("$short_seek","-");
             $controlkey=0;
             return "next";
         }
-        elsif ($hexchar eq $PgUp) { #79
-            # PageUp - Seek to given Object Id start
+        elsif ($combo eq '1b5b41') {
+            #up arrow
+            printf "Seek forward $long_seek.\n";
+            ctr_seek($long_seek,'+');
+            $controlkey=0;
+            return "next";
+        }
+        elsif ($combo eq '1b5b42') {
+            #down arrow
+            printf "Seek backward $long_seek sec.\n";
+            ctr_seek("$long_seek","-");
+            $controlkey=0;
+            return "next";
+        }
+        elsif ($combo eq '0a') {
+            #enter
+            get_time();
+            $hexchar='20';
+            $char = ' ';
+        }
+        elsif ($combo eq '1b5b46') {
+            #end
+            ctr_stop();
+            printf "-------------------------------------\nEvent recording terminated.\n";
+            return "last";
+        }
+        elsif ($combo eq '1b5b357e') {
+            #pgup
             if ($player ne '') { $seek_to_object = "#$player"; }
             else { $seek_to_object = '#'; }
             $controlkey=0;
             return "next";
         }
-        elsif ($hexchar eq $PgDown) { #73
-            # PageDown - Seek the last Object Id start
+        elsif ($combo eq '1b5b367e') {
+            #pgdown
             open(CSVa, '<', $events_csv) or die $!;
             my @ll = <CSVa>;
             close CSVa;
@@ -773,28 +768,155 @@ sub process {
             }
             $controlkey=0;
             return "next";
-        } elsif (hex($hexchar)>=80 and hex($hexchar)<=83) {
-            #FN 1-4 
-            $player = hex($hexchar)-79;
+        }
+        elsif ($combo eq '1b4f50') {
+            #f1
+            $player = 1;
             $mark_at = $player;
-            $controlkey=0;
-        } elsif ($hexchar eq $END) {
-            ctr_stop();
-            printf "-------------------------------------\nEvent recording terminated.\n";
-            return "last";
-        } else {
-            #unhandled control key
-            printf "Unhandled control key:\n";
-            printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
-            $controlkey=0;
+            get_time();
+        }
+        elsif ($combo eq '1b4f51') {
+            #f2
+            $player = 2;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b4f52') {
+            #f3
+            $player = 3;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b4f53') {
+            #f4
+            $player = 4;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31357e') {
+            #f5
+            $player = 5;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31377e') {
+            #f6
+            $player = 6;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31387e') {
+            #f7
+            $player = 7;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31397e') {
+            #f8
+            $player = 8;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31307e') {
+            #f9
+            $player = 9;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31317e') {
+            #f10
+            $player = 10;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31337e') {
+            #f11
+            $player = 11;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b31347e') {
+            #f12
+            $player = 12;
+            $mark_at = $player;
+            get_time();
+        }
+        elsif ($combo eq '1b5b48') {
+            #home
             return "next";
         }
-        #end control key 2
-    } elsif ($controlkey==4) {
-        $char=pack "H*",$utf8.$hexchar;
-        $controlkey=0;
-        $utf8='';
-    } # END controlkey check
+        elsif ($combo eq '1b5b327e') { 
+            #insert
+            return "next";
+        }
+        elsif ($combo eq '1b5b337e') {
+            #delete
+            return "next";
+        }
+        elsif ($combo eq '2f') {
+            # /
+            $seek_to_pos = '#';
+            print $green,"Search for time position.$NC Type time like this:$green $bold 0:20:10:$NC\n";
+            ctr_pause();
+            return "next";
+        }
+        elsif($combo =~ /c[35][0-9a-f]{2}/) {
+            #utf8 charaters
+            $char=pack "H*",$combo;
+            get_time();
+        }
+        elsif ($combo eq '7f') {
+            # backspace - delete the last event
+            open(CSVa, '<', "$events_csv") or die $!;
+            my @ll = <CSVa>;
+            close CSVa;
+            my $l = '';
+            $l = pop(@ll);
+            if ($l =~ /^#/) {
+                print "The last event already deleted!\n"; # or this is the first
+                return "next";
+            } else {
+                open (CSVa, "+<", $events_csv) or die "can't update $events_csv: $!";
+                my $addr;
+                while (<CSVa>) {
+                    $addr = tell(CSVa) unless eof(CSVa);
+                }
+                #truncate the last line 
+                truncate(CSVa, $addr) or die "can't truncate $events_csv: $!";
+                close CSVa;
+                #write back the list line
+                open(CSVa, '>>', "$events_csv") or die $!;
+                chomp $l;
+                print CSVa "#$l\n";
+                close CSVa;
+                # message
+                ctr_osd("Last event deleted");
+                print "Last event deleted!\n";
+                get_time();
+            }
+        }
+        elsif ($combo eq '09') {
+            #tab
+            #$char = " ";
+            #$hexchar = 20;
+            return "next";
+        }
+        elsif ($combo eq '20') {
+            # space to pause if control enabled
+            ctr_pause();
+            printf "pause\n";
+            return "next";
+        } else {
+            # ANY else character 
+            $char = pack "H*",$combo;
+            get_time();
+            # lowercase/uppercase letters
+            $rehexchar = chr(hex($combo)+hex(20));
+            $rehexcharT = chr(hex($combo));
+        }
+    }
+
+
     if ($seek_to_pos ne '0') {
         $seek_to_pos .= $char;
         if ($seek_to_pos =~ /#(\d+):(\d+):(\d+):/) {
@@ -847,52 +969,6 @@ sub process {
         $mark_at = ''; 
         return "next";
     }
-    #printf(" Decimal: %d\tHex: %x\n", ord($char), ord($char));
-    if ($hexchar eq '7f') {
-        # backspace - delete the last event
-        open(CSVa, '<', "$events_csv") or die $!;
-        my @ll = <CSVa>;
-        close CSVa;
-        my $l = '';
-        $l = pop(@ll);
-        if ($l =~ /^#/) {
-            print "The last event already deleted!\n"; # or this is the first
-            return "next";
-        } else {
-            open (CSVa, "+<", $events_csv) or die "can't update $events_csv: $!";
-            my $addr;
-            while (<CSVa>) {
-                $addr = tell(CSVa) unless eof(CSVa);
-            }
-            #truncate the last line 
-            truncate(CSVa, $addr) or die "can't truncate $events_csv: $!";
-            close CSVa;
-            #write back the list line
-            open(CSVa, '>>', "$events_csv") or die $!;
-            chomp $l;
-            print CSVa "#$l\n";
-            close CSVa;
-            # message
-            ctr_osd("Last event deleted");
-            print "Last event deleted!\n";
-            get_time();
-        }
-    } elsif ($hexchar eq '0a') {
-        #enter
-        get_time();
-        $hexchar='20';
-        $char = ' ';
-    } elsif ($hexchar eq '20') {
-        # space to pause if control enabled
-        ctr_pause();
-        printf "pause\n";
-        return "next";
-    } else {
-        # ANY else character 
-        get_time();
-    }
-    $rehexchar = chr(hex($hexchar)+hex(20));
-    $rehexcharT = chr(hex($hexchar));
 
     my $ret;
     # answer processing
@@ -900,7 +976,7 @@ sub process {
         while (<KID_TO_READ>) {
             if (/^ANS_TIME_POSITION=(.+)/) {
                 $ret = writeout($1);
-                next if $ret eq "next";
+                #next if $ret eq "next";
                 last if $ret eq "last";
             }
             elsif (/^\*(.+)/) {
@@ -913,7 +989,7 @@ sub process {
             #    last;
             #}
         }
-        return "next";
+        #return "next";
     } else {
         my $line;
         if (defined($line = <$socket>)) {
