@@ -52,7 +52,7 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-my $mwrap_version = 'Sun May 22 14:24:21 CEST 2016';
+my $mwrap_version = '2018-02-08 15:34:37.799270721 +0100';
 
 use strict;
 use warnings;
@@ -90,14 +90,14 @@ my $conf = '';
 my $ctr_enabled = 1; # pause control by space key enabled
 my $short_seek = 10;
 my $long_seek = 120;
-my $mwrap_log = "/tmp/mwrap.log";
+my $mwrap_log = "~/mwrap.log";
 # ---------------------------------------------------------------------------------------
 # Do not change these variables
 my $args = ''; # mplayer args like -vo x11
 my $FIFO = 'fifo';
 my $name = $0;
 my ($char, $key,$value,$answer,$c,%hash,$project_dir,$pid,$time,$ftime,$duration, @f,$hexchar,$rehexchar,$rehexcharT,$utf8,$switch);
-my $player = 0;
+my $player = 1;
 my $filename = '';
 my $keydef = 'keys.txt';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
@@ -126,7 +126,7 @@ sub args {
     my ($p1) = @_;
     if ($filename eq '') {
         $filename = $p1;
-        $project_dir = "$filename.dir";
+        $project_dir = basename("$filename").".dir";
     } else { $keydef = $p1; }
 }
 # ---------------------------------------------------------------------------------------
@@ -231,7 +231,7 @@ if (-e $keydef) {
     while(<KEYF>) {
         printf "\t";
         printf;
-        ($key,$value) = split / /;
+        my ($key, $value) = split(/ /, $_, 2);
         chop $value;
         $hash{ $key } = $value;
     }
@@ -250,7 +250,7 @@ if (-e $filename) {
     if ( ! -d $project_dir ) {
         mkdir "$project_dir" or die $!;
         
-        print $yellow,'You need a unique id for this project',$NC,"\n";
+        print $yellow,'You need a unique name for this event recording project',$NC,"\n";
         $answer = <STDIN>;
         chop $answer;
         $events_csv = "$project_dir/$answer.csv";
@@ -336,9 +336,9 @@ if (-e $filename) {
             chop $answer;
             if ($answer eq 'y') {
                 # seek to last event's position
-                open(CSV, '<', "$events_csv") or die $!;
-                my @ll = <CSV>;
-                close(CSV);
+                open(CSVa, '<', "$events_csv") or die $!;
+                my @ll = <CSVa>;
+                close(CSVa);
                 while(@ll) {
                     $ll = pop @ll;
                     if ($ll =~ /^#/) { next; }
@@ -383,9 +383,9 @@ if (-e $filename) {
                     $player = '';
                 }
             } else {
-                open(CSV, '<', "$events_csv") or die $!;
-                my @ll = <CSV>;
-                close(CSV);
+                open(CSVa, '<', "$events_csv") or die $!;
+                my @ll = <CSVa>;
+                close(CSVa);
                 while(@ll) {
                     $ll = pop @ll;
                     if ($ll =~ /^#/) { next; }
@@ -580,7 +580,8 @@ if ($pid) {
                 $controlkey=0;
             } elsif ($hexchar eq '46') {
                 open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
-                print FIFO "stop\n";
+                #print FIFO "stop\n";
+                print FIFO "quit\n";
                 close FIFO;
                 printf "-------------------------------------\nEvent recording finished.\n";
                 last;
@@ -798,6 +799,7 @@ if ($pid) {
     ReadMode 0;
     if (<KID_TO_READ>) {
         kill 'TERM',$pid;
+        `killall mplayer`
         #`kill -9 $pid&`;
         #close(KID_TO_READ) || print "mplayer exited $?";
     }
@@ -806,16 +808,23 @@ if ($pid) {
 } elsif ($pid == 0) {
     # child process
     close STDERR;
-    close STDIN;
+    #close STDIN;
 
     if ($seek ne '0' and $seek ne '') {
         $seek = "-ss $seek";
     } else {
         $seek = "";
     }
+
+    open(LOG, '>>', "mwrap_settings.log") or die $!;
+    LOG->autoflush(1);
+    printf LOG "logging\n";
+    printf LOG "$mplayer $args $seek  -quiet -slave -idle -input file='$FIFO' -key-fifo-size 2 '$filename' -geometry 0%:0% 2>$mwrap_log\n";
+    close(LOG);
+
     my $exec = ''.$mplayer.' '.$args.' '.$seek.' -quiet -slave -idle -input file='.$FIFO.' -key-fifo-size 2 \''.$filename.'\' -geometry 0%:0% '."2>$mwrap_log";
     my $wl = ";echo '$exec' >> $mwrap_log";
-    exec($exec."$wl;while true; do cat fifo;echo '*$red Mplayer has stopped unexpectedly.$NC Press END or ^C to quit and see mwrap.log for information!';sleep 1;done");
+    exec($exec."$wl;while true; do cat fifo;echo '*$red Mplayer has stopped unexpectedly.$NC Press END or ^C to quit and see $mwrap_log for information!';sleep 1;done");
         
     exit(0);
 }
