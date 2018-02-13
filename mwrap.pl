@@ -52,7 +52,7 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-my $mwrap_version = '2018-02-08 15:34:37.799270721 +0100';
+my $mwrap_version = 'Tue Feb 13 09:39:58 CET 2018';
 
 use strict;
 use warnings;
@@ -702,6 +702,12 @@ if ($pid) {
             printf "pause\n";
             close FIFO;
             next;
+        } elsif ($hexchar eq '23') {
+            print "comment will be added here\n";
+            open(CSVa, '>>', "$events_csv") or die $!;
+            print CSVa "#comment will be added here\n";
+            close CSVa;
+            next;
         } else {
             # ANY else character 
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
@@ -723,12 +729,9 @@ if ($pid) {
                     $mark_at = "";
                     last;
                 }
-                if (exists  $hash{ $char }) {
-                    #kis betűs leütés aminek van cimkéje
-                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s%s0%7$s',$c,$hash{$char},$char,$ftime,$fs,$player,"\n",$bold,$NC;
-                    #} elsif (exists $hash{ $rehexchar }) {
-                } elsif ((hex($hexchar)>64 and hex($hexchar)<91) or length($hexchar)==4) {
+                $duration = 0;
+
+                if ((hex($hexchar)>64 and hex($hexchar)<91) or length($hexchar)==4) {
                     # letters A-Z
                     # UPPERCASE LETTERS
                     # DURATION mesuring
@@ -758,24 +761,41 @@ if ($pid) {
                             last;
                         }
                     }
-                    if (exists $hash{ $rehexchar }) {
-                        #nagy betűs leütés aminek van cimkéje
+                    #if (exists $hash{ $rehexchar }) {
+                    #    #nagy betűs leütés aminek van cimkéje
+                    #    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
+                    #    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
+                    #} else {
+                    #    #nagy betűs leütés aminek nincs cimkéje
+                    #    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$rehexchar."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
+                    #    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
+                    #}
+                    #} elsif (hex($hexchar)>48 and hex($hexchar)<58) {
+                    #  $player = $char;
+                    #    $c = $c-1;
+                    #    # numbers 1-9
+                    #    printf "object id: $player\n";
+                }
+
+
+                if (exists  $hash{ $char }) {
+                    # leütés aminek van cimkéje
+                    if ($duration > 0) {
                         printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
+                        printf '%4.d [%8$s%6$s%9$s] %-35s%8$s%s%9$s %s %.2f%7$s',$c,$hash{$rehexchar}."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
                     } else {
-                        #nagy betűs leütés aminek nincs cimkéje
-                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$rehexchar."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
-                        printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$hash{$char},$char,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%8$s%6$s%9$s] %-35s%8$s%s%9$s %s%s%10$s%7$s',$c,$hash{$char},$char,$ftime,$fs,$player,"\n",$bold,$NC,$duration;
                     }
-                #} elsif (hex($hexchar)>48 and hex($hexchar)<58) {
-                #  $player = $char;
-                #    $c = $c-1;
-                #    # numbers 1-9
-                #    printf "object id: $player\n";
                 } else {
-                    #kis betűs leütés aminek nincs cimkéje
-                    printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,0,$fs,"\n",$player;
-                    printf '%4.d [%8$s%6$s%9$s] %-15s%8$s%s%9$s %s%s0%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n",$bold,$NC;
+                    # leütés aminek nincs cimkéje
+                    if ($duration > 0) {
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,$rehexchar."-end",$rehexcharT,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%8$s%6$s%9$s] %-35s%8$s%s%9$s %s %.2f%7$s',$c,$rehexchar."-end",$rehexcharT,$ftime,$duration,$player,"\n",$bold,$NC;
+                    } else {               
+                        printf CSV '%d%6$s%s%6$s%s%6$s%.2f%6$s%.2f%6$s%8$s%7$s',$c,'undefined',$char,$time,$duration,$fs,"\n",$player;
+                        printf '%4.d [%8$s%6$s%9$s] %-35s%8$s%s%9$s %s%s%10$s%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n",$bold,$NC,$duration;
+                    }
                 }
                 $c = $c+1;
                 last;
