@@ -52,7 +52,7 @@
 # COPYRIGHT
 #       I don't know yet. Write an email if you have any question.
 # 
-my $mwrap_version = 'Tue Feb 13 09:39:58 CET 2018';
+my $mwrap_version = 'Wed Feb 14 09:50:29 CET 2018';
 
 use strict;
 use warnings;
@@ -102,11 +102,13 @@ my $filename = '';
 my $keydef = 'keys.txt';
 my @chars = ( "A" .. "Z", "a" .. "z", 0 .. 9 );
 my $rand_name = join("", @chars[ map { rand @chars } ( 1 .. 8 ) ]);
-my $events_csv = "$rand_name.csv";
+my $events_csv = "$rand_name.mw";
+my $events_csv_backup = ".$rand_name.mw.backup";
 my $mcode_pl = $bin_path.'mcode.pl';
 my $version='';
 my $seek_to_object = 0;
 my $seek_to_pos = 0;
+my $comment = '';
 my $mark_at = '';
 my $ll = '';
 my $pos = '';
@@ -253,7 +255,8 @@ if (-e $filename) {
         print $yellow,'You need a unique name for this event recording project',$NC,"\n";
         $answer = <STDIN>;
         chop $answer;
-        $events_csv = "$project_dir/$answer.csv";
+        $events_csv = "$project_dir/$answer.mw";
+        $events_csv_backup = "$project_dir/.$answer.mw.backup";
         open(CSV, '>>', "$events_csv") or die $!;
         CSV->autoflush(1);
         print CSV "#Video File Name: $filename\n";
@@ -281,7 +284,8 @@ if (-e $filename) {
                 print $yellow,"You need a unique id for this project$NC\n";
                 $answer = <STDIN>;
                 chop $answer;
-                $events_csv = "$project_dir/$answer.csv";
+                $events_csv = "$project_dir/$answer.mw";
+                $events_csv_backup = "$project_dir/.$answer.mw.backup";
             } while (-e $events_csv);
             
             open(CSV, '>>', "$events_csv") or die $!;
@@ -304,7 +308,7 @@ if (-e $filename) {
             # continue a previously interrupted session
             use File::Find;
             my $dir = "$project_dir";
-            find( sub {push @f,basename("$File::Find::name$/") if (/\.csv$/)},$dir); 
+            find( sub {push @f,basename("$File::Find::name$/") if (/\.mw$/)},$dir); 
             print $yellow,"Type the number of your choice.$NC\n";
             my $i = 0;
             chop(@f);
@@ -318,17 +322,20 @@ if (-e $filename) {
                 $hexchar = unpack "H*",$answer;
                 #print $hexchar;
                 if ($answer !~ /^\d+$/) {
+                    ReadMode 0;
                     exit 1;
                 } elsif ($answer>@f) {
+                    ReadMode 0;
                     exit 1;
                 }
             }
             ReadMode 0;
 
             $answer = $f[$answer-1];
-            $answer =~ s/\.csv$//; 
-            print $gray,$answer.".csv",$NC,"\n";
-            $events_csv = "$project_dir/$answer.csv";
+            $answer =~ s/\.mw$//; 
+            print $gray,$answer.".mw",$NC,"\n";
+            $events_csv = "$project_dir/$answer.mw";
+            $events_csv_backup = "$project_dir/.$answer.mw.backup";
             
             print $yellow,"Do you want to start from the last event? (y,n)\n$gray";
             $answer = <STDIN>;
@@ -349,7 +356,7 @@ if (-e $filename) {
                 }
                 if ($ll =~ /^#/) { $ll = ''; }
                 # create backup file?
-                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
+                copy("$events_csv", "$project_dir/.".basename($events_csv)."~1") or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
                 print CSV "#Restarted recording from the last position\n";
@@ -397,7 +404,7 @@ if (-e $filename) {
                 my @bl = split /$fs/,$ll;
                 $pos = $bl[0];
 
-                copy("$events_csv", "$project_dir/.".basename($events_csv).".csv~1") or die "csv cannot be backuped.";
+                copy("$events_csv", "$project_dir/.".basename($events_csv)."~1") or die "csv cannot be backuped.";
                 open(CSV, '>>', "$events_csv") or die $!;
                 CSV->autoflush(1);
                 print CSV "#Restarted recording from the first position\n";
@@ -446,13 +453,21 @@ if ($pid) {
     print FIFO "osd_show_text '$answer'\n";
     print FIFO "pause\n";
     close FIFO;
-
+    
+    # some action needed for the while loop because it is too fast
+    #use Time::HiRes qw(usleep);
+    
     my $interval = 0; 
     my $controlkey=0;
     ReadMode 3;
     while (defined($char = ReadKey(0))) {
+
         $hexchar = unpack "H*",$char;
+        #printf "";
         #printf("Decimal: %d\tHex: %x\n", ord($char), ord($char));
+        # It is enough to slow down the loop
+        #usleep(10000);
+
         if ($hexchar eq '7e') {
             # long control keys END
             $controlkey=0;
@@ -476,6 +491,14 @@ if ($pid) {
             $seek_to_pos = '#';
             print $green,"Search for time position.$NC Type time like this:$green $bold 0:20:10:$NC\n";
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+            print FIFO "pause\n";
+            close FIFO;
+            next;
+        } elsif ($hexchar eq '23') {
+            # #
+            $comment = '#';
+            print "Comment will be added here, finish commenting with .\n";
+            open(FIFO,"> $FIFO") || die "Cannot open $! \n";
             print FIFO "pause\n";
             close FIFO;
             next;
@@ -598,6 +621,28 @@ if ($pid) {
             $controlkey=0;
             $utf8='';
         } # END controlkey check
+
+        # comment
+        if ($comment ne '') {
+            $comment .= $char;
+            if ($char eq '.') {
+                printf "$char\n";
+                $comment =~ s/\n/\n#/;
+                open(CSVa, '>>', "$events_csv") or die $!;
+                print CSVa "$comment\n";
+                close CSVa;
+                $comment = '';
+
+                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
+                print FIFO "pause\n";
+                close FIFO;
+            } else {
+                printf $char;
+            }
+            next;
+        }
+
+        # seek to given time pos
         if ($seek_to_pos ne '0') {
             $seek_to_pos .= $char;
             if ($seek_to_pos =~ /#(\d+):(\d+):(\d+):/) {
@@ -610,14 +655,12 @@ if ($pid) {
                 close FIFO;
                 $controlkey=0;
                 $seek_to_pos = 0;
-                next;
             } else {
-                open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
-                print FIFO "osd_show_text 'Position: $seek_to_pos'\n";
-                close FIFO;
-                next;
+                printf $char;
             }
+            next;
         }
+
         # Seek to given object
         if ($seek_to_object ne '0') {
             if ($seek_to_object =~ /#(\d+)/) {
@@ -656,6 +699,8 @@ if ($pid) {
             $mark_at = ''; 
             next;
         }
+
+
         #printf(" Decimal: %d\tHex: %x\n", ord($char), ord($char));
         if ($hexchar eq '7f') {
             # backspace - delete the last event
@@ -702,18 +747,13 @@ if ($pid) {
             printf "pause\n";
             close FIFO;
             next;
-        } elsif ($hexchar eq '23') {
-            print "comment will be added here\n";
-            open(CSVa, '>>', "$events_csv") or die $!;
-            print CSVa "#comment will be added here\n";
-            close CSVa;
-            next;
         } else {
             # ANY else character 
             open(FIFO,"> $FIFO") || warn "Cannot open fifo $! \n";
             print FIFO "get_time_pos\n";
             close FIFO;
         }
+
         $rehexchar = chr(hex($hexchar)+hex(20));
         $rehexcharT = chr(hex($hexchar));
         while (<KID_TO_READ>) {
@@ -797,6 +837,17 @@ if ($pid) {
                         printf '%4.d [%8$s%6$s%9$s] %-35s%8$s%s%9$s %s%s%10$s%7$s',$c,'undefined',$char,$ftime,$fs,$player,"\n",$bold,$NC,$duration;
                     }
                 }
+                # extra backup!
+                open(CSVa, '<', "$events_csv") or die $!;
+                my @ll = <CSVa>;
+                close CSVa;
+                my $l = '';
+                $l = pop(@ll);
+
+                open(CSVb, '>>', "$events_csv_backup") or die $!;
+                print CSVb "$l";
+                close CSVb;
+                
                 $c = $c+1;
                 last;
             }
@@ -852,6 +903,8 @@ if ($pid) {
 
 ReadMode 0;
 close(CSV) || warn "csv write error: $?";
+
+copy("$events_csv", "$project_dir/".basename($events_csv).".csv") or die "csv cannot be copied.";
 
 #print "\nmwrap event recording done.\n";
 
